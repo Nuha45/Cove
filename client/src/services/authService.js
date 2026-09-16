@@ -1,0 +1,17 @@
+import api from './api';
+
+export function register(payload) {
+  return api.post('/auth/register', payload).then((res) => res.data);
+}
+
+export function login(payload) {
+  return api.post('/auth/login', payload).then((res) => res.data);
+}
+
+export function logout() {
+  return api.post('/auth/logout').then((res) => res.data);
+}
+
+export function me() {
+  return api.get('/auth/me').then((res) => res.data);
+}

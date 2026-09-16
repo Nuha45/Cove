@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+server/uploads/
+*.log
+.DS_Store
+_prototype/
+small-business-management-platform.zip
