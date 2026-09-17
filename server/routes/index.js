@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const authRoutes = require('./authRoutes');
 const businessRoutes = require('./businessRoutes');
 const productRoutes = require('./productRoutes');
+const orderRoutes = require('./orderRoutes');
 
 const router = express.Router();
 
@@ -17,5 +18,6 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/business', businessRoutes);
 router.use('/products', productRoutes);
+router.use('/orders', orderRoutes);
 
 module.exports = router;

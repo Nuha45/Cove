@@ -27,6 +27,17 @@ export function formatPrice(amount) {
   }).format(value);
 }
 
+export function formatOrderDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function formatUpdated(iso) {
   if (!iso) return 'Just added';
   const diff = Date.now() - new Date(iso).getTime();
