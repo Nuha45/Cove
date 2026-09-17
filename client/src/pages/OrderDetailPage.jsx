@@ -102,7 +102,11 @@ export default function OrderDetailPage() {
                 <dl className="detail-list">
                   <div>
                     <dt>Name</dt>
-                    <dd>{order.customer.name}</dd>
+                    <dd>
+                      {order.customerId ? (
+                        <Link className="text-button" to={`/customers/${order.customerId}`}>{order.customer.name}</Link>
+                      ) : order.customer.name}
+                    </dd>
                   </div>
                   <div>
                     <dt>Phone</dt>

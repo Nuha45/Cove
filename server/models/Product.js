@@ -76,4 +76,19 @@ productSchema.methods.toPublic = function toPublic() {
   };
 };
 
+productSchema.methods.toStorefront = function toStorefront() {
+  const available = this.stockQuantity > 0;
+  return {
+    id: this._id.toString(),
+    name: this.name,
+    description: this.description || '',
+    price: this.price,
+    images: this.images,
+    category: this.category || '',
+    stockAvailability: available ? 'In stock' : 'Out of stock',
+    stockQuantity: this.stockQuantity,
+    available,
+  };
+};
+
 module.exports = mongoose.model('Product', productSchema);

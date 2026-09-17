@@ -17,6 +17,17 @@ export default function DashboardLayout() {
     setMobileNav(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!mobileNav) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.classList.add('nav-open');
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.classList.remove('nav-open');
+      document.body.style.overflow = previous;
+    };
+  }, [mobileNav]);
+
   function notify(text) {
     setToast(text);
     window.setTimeout(() => setToast(''), 2600);
@@ -32,7 +43,7 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${mobileNav ? 'nav-open' : ''}`}>
       {mobileNav ? (
         <button
           className="sidebar-backdrop"
@@ -50,7 +61,7 @@ export default function DashboardLayout() {
         onLogout={handleLogout}
       />
       <main className="main">
-        <TopBar onMenu={() => setMobileNav((open) => !open)} />
+        <TopBar onMenu={() => setMobileNav((open) => !open)} menuOpen={mobileNav} />
         <div className="content">
           <Outlet context={{ notify }} />
         </div>

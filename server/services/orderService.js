@@ -2,8 +2,10 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const OrderCounter = require('../models/OrderCounter');
 const Product = require('../models/Product');
+const Customer = require('../models/Customer');
 const ApiError = require('../utils/ApiError');
 const { canTransition, transitionMessage } = require('../utils/orderStatus');
+const customerService = require('./customerService');
 
 const OPEN_STATUSES = ['New', 'Confirmed', 'Preparing', 'Ready'];
 
@@ -29,7 +31,7 @@ let readyPromise;
 
 function ensureReady() {
   if (!readyPromise) {
-    readyPromise = Promise.all([Order.init(), OrderCounter.init()]).catch((err) => {
+    readyPromise = Promise.all([Order.init(), OrderCounter.init(), Customer.init()]).catch((err) => {
       readyPromise = null;
       throw err;
     });
@@ -125,21 +127,33 @@ async function create(businessId, input) {
 
   const session = await mongoose.startSession();
   try {
-    // Atlas runs as a replica set, so stock and the order commit together or not at all.
+    // Atlas runs as a replica set, so stock, customer stats, and the order commit together.
     const order = await session.withTransaction(async () => {
       const items = await claimItems(businessId, requested, session);
       const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
       const deliveryFee = input.deliveryMethod === 'Delivery' ? roundMoney(input.deliveryFee || 0) : 0;
       const total = roundMoney(subtotal + deliveryFee);
       const orderNumber = await nextOrderNumber(businessId, session);
+      const customerSnapshot = {
+        name: input.customer.name,
+        phone: input.customer.phone || '',
+        email: input.customer.email || '',
+      };
+
+      // Ignore any client-supplied customerId. Resolve from checkout identity only.
+      const customer = await customerService.recordOrder(
+        businessId,
+        customerSnapshot,
+        total,
+        new Date(),
+        session
+      );
+
       const [created] = await Order.create([{
         businessId,
         orderNumber,
-        customer: {
-          name: input.customer.name,
-          phone: input.customer.phone || '',
-          email: input.customer.email || '',
-        },
+        customerId: customer._id,
+        customer: customerSnapshot,
         items,
         subtotal,
         deliveryFee,
@@ -322,6 +336,14 @@ async function cancel(businessId, id, paymentStatus) {
       }
 
       await restoreStock(previous.items, businessId, session);
+      // Cancelled orders do not count as revenue. Reverse the create-time stats once.
+      await customerService.reverseOrder(
+        businessId,
+        previous.customerId,
+        previous.total,
+        previous._id,
+        session
+      );
       return Order.findOne({ _id: id, businessId }).session(session);
     });
     return order;

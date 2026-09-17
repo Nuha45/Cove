@@ -1,0 +1,153 @@
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { ArrowLeft, Minus, Package, Plus } from 'lucide-react';
+import { useCart } from '../../context/CartContext';
+import { getStoreProduct } from '../../services/storeService';
+import { formatPrice } from '../../utils/display';
+import { getErrorMessage } from '../../utils/errors';
+import { mediaUrl } from '../../utils/media';
+
+export default function StoreProductPage() {
+  const { slug, productId } = useParams();
+  const navigate = useNavigate();
+  const { business } = useOutletContext();
+  const currency = business?.currency || 'INR';
+  const { addItem } = useCart();
+  const [product, setProduct] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [state, setState] = useState('loading');
+  const [error, setError] = useState('');
+  const [note, setNote] = useState('');
+  const [activeImage, setActiveImage] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setState('loading');
+      setError('');
+      try {
+        const result = await getStoreProduct(slug, productId);
+        if (cancelled) return;
+        setProduct(result.product);
+        setQuantity(1);
+        setActiveImage(0);
+        setState('ready');
+      } catch (err) {
+        if (cancelled) return;
+        setError(getErrorMessage(err));
+        setState(err.response?.status === 404 ? 'missing' : 'error');
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, productId]);
+
+  function handleAdd() {
+    if (!product?.available) return;
+    const ok = addItem(product, quantity);
+    if (!ok) {
+      setNote('That quantity is not available.');
+      return;
+    }
+    setNote('Added to cart.');
+  }
+
+  if (state === 'loading') return <div className="store-panel">Loading product...</div>;
+  if (state === 'missing') {
+    return (
+      <div className="store-panel">
+        <h1>Product not found</h1>
+        <p>This product is not available in this shop.</p>
+        <Link className="secondary" to={`/store/${slug}`}>Back to shop</Link>
+      </div>
+    );
+  }
+  if (state === 'error') return <div className="store-panel form-error">{error}</div>;
+
+  const images = product.images?.length ? product.images : [];
+  const max = Math.max(1, product.stockQuantity || 0);
+
+  return (
+    <div className="store-detail">
+      <Link className="back-link" to={`/store/${slug}`}>
+        <ArrowLeft size={16} /> Shop
+      </Link>
+
+      <div className="store-detail-grid">
+        <div className="store-gallery">
+          {images.length ? (
+            <img src={mediaUrl(images[activeImage] || images[0])} alt={product.name} />
+          ) : (
+            <span className="store-thumb-fallback large" aria-hidden="true"><Package size={42} /></span>
+          )}
+          {images.length > 1 ? (
+            <div className="store-thumbs">
+              {images.map((image, index) => (
+                <button
+                  key={image}
+                  type="button"
+                  className={index === activeImage ? 'selected' : ''}
+                  onClick={() => setActiveImage(index)}
+                  aria-label={`Image ${index + 1}`}
+                >
+                  <img src={mediaUrl(image)} alt="" />
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="store-detail-copy">
+          <p className="eyebrow">{product.category || 'PRODUCT'}</p>
+          <h1>{product.name}</h1>
+          <strong className="store-price">{formatPrice(product.price, currency)}</strong>
+          <p className={product.available ? 'in-stock' : 'out-stock'}>{product.stockAvailability}</p>
+          {product.description ? <p className="store-description">{product.description}</p> : null}
+
+          {product.available ? (
+            <div className="store-buy">
+              <div className="qty-control">
+                <button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => setQuantity((current) => Math.max(1, current - 1))}>
+                  <Minus size={14} />
+                </button>
+                <input
+                  aria-label="Quantity"
+                  inputMode="numeric"
+                  value={quantity}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (!Number.isFinite(next)) return;
+                    setQuantity(Math.min(max, Math.max(1, next)));
+                  }}
+                />
+                <button type="button" aria-label="Increase quantity" disabled={quantity >= max} onClick={() => setQuantity((current) => Math.min(max, current + 1))}>
+                  <Plus size={14} />
+                </button>
+              </div>
+              <button className="primary" type="button" onClick={handleAdd}>Add to cart</button>
+              <button className="secondary" type="button" onClick={() => {
+                if (!product?.available) return;
+                const ok = addItem(product, quantity);
+                if (!ok) {
+                  setNote('That quantity is not available.');
+                  return;
+                }
+                navigate(`/store/${slug}/cart`);
+              }}
+              >
+                Buy now
+              </button>
+            </div>
+          ) : (
+            <button className="primary" type="button" disabled>Unavailable</button>
+          )}
+          {note ? <p className="inline-note">{note}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}

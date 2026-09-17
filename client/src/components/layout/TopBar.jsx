@@ -1,25 +1,30 @@
-import { Bell, ExternalLink, Menu } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Bell, ExternalLink, Menu, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { navItems } from '../../routes/navItems';
 import CoveLogo from '../brand/CoveLogo';
+import { storefrontPath } from '../../utils/storefront';
 
-export default function TopBar({ onMenu }) {
+export default function TopBar({ onMenu, menuOpen = false }) {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const current = navItems.find((item) => item.to === pathname);
+  const { business } = useAuth();
+  const current = navItems.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
   const label = current?.label || 'Workspace';
+  const storePath = business?.slug ? storefrontPath(business.slug) : '/storefront';
 
   return (
     <header className="topbar">
-      <button className="mobile-menu" type="button" aria-label="Open menu" onClick={onMenu}>
-        <Menu />
+      <button className="mobile-menu" type="button" aria-label={menuOpen ? 'Close menu' : 'Open menu'} onClick={onMenu}>
+        {menuOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
       <div className="mobile-brand" aria-label="Cove">
         <CoveLogo size={24} />
       </div>
       <div className="crumb">
-        {label === 'Dashboard' ? 'Workspace' : 'Workspace /'} <strong>{label}</strong>
+        <span className="crumb-prefix">Workspace /</span>
+        <strong>{label}</strong>
       </div>
+      <div className="mobile-page-title">{label}</div>
       <div className="top-actions">
         <button
           className="icon-button"
@@ -29,9 +34,15 @@ export default function TopBar({ onMenu }) {
         >
           <Bell size={19} />
         </button>
-        <button className="store-link" type="button" onClick={() => navigate('/storefront')}>
-          <ExternalLink size={15} /> View storefront
-        </button>
+        {business?.slug ? (
+          <a className="store-link" href={storePath} target="_blank" rel="noreferrer">
+            <ExternalLink size={15} /> View storefront
+          </a>
+        ) : (
+          <a className="store-link" href="/storefront">
+            <ExternalLink size={15} /> View storefront
+          </a>
+        )}
       </div>
     </header>
   );

@@ -34,12 +34,18 @@ function errorHandler(err, req, res, next) {
   }
 
   const statusCode = err.statusCode || 500;
+  const trusted = Boolean(err.statusCode);
   if (statusCode >= 500) {
-    console.error(err);
+    // Never log secrets; ApiError messages are already safe for operators.
+    console.error(trusted ? `[api ${statusCode}] ${err.message}` : err);
   }
 
   res.status(statusCode).json({
-    message: statusCode >= 500 ? 'Something went wrong. Please try again.' : err.message,
+    message: trusted
+      ? err.message
+      : statusCode >= 500
+        ? 'Something went wrong. Please try again.'
+        : err.message,
     errors: err.errors,
   });
 }

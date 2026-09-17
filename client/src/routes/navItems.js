@@ -1,6 +1,7 @@
 import {
   BarChart3,
   ClipboardList,
+  CreditCard,
   Heart,
   LayoutDashboard,
   Package,
@@ -53,7 +54,7 @@ export const navItems = [
     label: 'AI Marketing',
     to: '/marketing',
     icon: Sparkles,
-    subtitle: 'Manage your marketing in one simple place.',
+    subtitle: 'Turn a product into a caption, WhatsApp promo, or short description.',
     emptyTitle: 'Nothing to create yet',
     emptyText: 'Marketing posts will use your products. Add a product first, then come back here.',
   },
@@ -61,7 +62,7 @@ export const navItems = [
     label: 'Analytics',
     to: '/analytics',
     icon: BarChart3,
-    subtitle: 'Manage your analytics in one simple place.',
+    subtitle: 'Simple numbers from your real orders, customers, and requests.',
     emptyTitle: 'No insights yet',
     emptyText: 'Once you start selling, simple numbers about your shop will appear here.',
   },
@@ -70,6 +71,12 @@ export const navItems = [
     to: '/storefront',
     icon: Store,
     subtitle: 'This is the shop your customers will see.',
+  },
+  {
+    label: 'Billing',
+    to: '/billing',
+    icon: CreditCard,
+    subtitle: 'Manage your Cove Pro subscription.',
   },
   {
     label: 'Settings',

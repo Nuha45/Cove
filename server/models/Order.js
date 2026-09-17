@@ -128,6 +128,13 @@ const orderSchema = new mongoose.Schema(
       maxlength: 500,
       default: '',
     },
+    // Links to Customers. Optional so Phase 3 orders created before Phase 5 still load.
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Customer',
+      default: null,
+      index: true,
+    },
     // Set once, in the same transaction that puts stock back.
     stockRestored: {
       type: Boolean,
@@ -141,11 +148,13 @@ orderSchema.index({ businessId: 1, orderNumber: 1 }, { unique: true });
 orderSchema.index({ businessId: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, paymentStatus: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
 
 orderSchema.methods.toPublic = function toPublic() {
   return {
     id: this._id.toString(),
     orderNumber: this.orderNumber,
+    customerId: this.customerId ? this.customerId.toString() : null,
     customer: {
       name: this.customer.name,
       phone: this.customer.phone || '',
@@ -168,6 +177,31 @@ orderSchema.methods.toPublic = function toPublic() {
     notes: this.notes || '',
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
+  };
+};
+
+// Guest confirmation. No Mongo ids and no seller-only fields.
+orderSchema.methods.toCustomerConfirmation = function toCustomerConfirmation() {
+  return {
+    orderNumber: this.orderNumber,
+    customer: {
+      name: this.customer.name,
+    },
+    items: this.items.map((item) => ({
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      subtotal: item.subtotal,
+    })),
+    subtotal: this.subtotal,
+    deliveryFee: this.deliveryFee,
+    total: this.total,
+    paymentStatus: this.paymentStatus,
+    status: this.status,
+    deliveryMethod: this.deliveryMethod,
+    deliveryAddress: this.deliveryAddress || '',
+    notes: this.notes || '',
+    createdAt: this.createdAt,
   };
 };
 

@@ -6,31 +6,33 @@ import CoveLogo from '../brand/CoveLogo';
 
 export default function Sidebar({ business, user, open, onNavigate, onNotify, onLogout }) {
   return (
-    <aside className={`sidebar ${open ? 'open' : ''}`}>
-      <div className="brand">
-        <CoveLogo />
-      </div>
-
-      <div className="business-switch">
-        <div className="avatar">{initials(business?.name, 1)}</div>
-        <div>
-          <strong>{business?.name || 'Your business'}</strong>
-          <small>{business?.category || 'Small business'}</small>
+    <aside className={`sidebar ${open ? 'open' : ''}`} aria-hidden={open ? undefined : undefined}>
+      <div className="sidebar-scroll">
+        <div className="brand">
+          <CoveLogo />
         </div>
-        <ChevronDown size={15} />
-      </div>
 
-      <nav aria-label="Workspace">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink key={item.to} to={item.to} onClick={onNavigate}>
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+        <div className="business-switch">
+          <div className="avatar">{initials(business?.name, 1)}</div>
+          <div>
+            <strong>{business?.name || 'Your business'}</strong>
+            <small>{business?.category || 'Small business'}</small>
+          </div>
+          <ChevronDown size={15} />
+        </div>
+
+        <nav aria-label="Workspace">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink key={item.to} to={item.to} onClick={onNavigate}>
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+      </div>
 
       <div className="sidebar-bottom">
         <div className="upgrade">

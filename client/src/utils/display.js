@@ -15,16 +15,28 @@ export function formatEyebrowDate(date = new Date()) {
     .toUpperCase();
 }
 
-export function formatPrice(amount) {
+export function formatPrice(amount, currency = 'INR') {
   const value = Number(amount);
-  if (!Number.isFinite(value)) return '₹0';
+  const code = currency || 'INR';
+  if (!Number.isFinite(value)) {
+    try {
+      return new Intl.NumberFormat('en', { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(0);
+    } catch {
+      return '0';
+    }
+  }
   const whole = Math.abs(value - Math.round(value)) < 0.001;
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: whole ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  const locale = code === 'INR' ? 'en-IN' : 'en';
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: whole ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${code} ${value.toFixed(whole ? 0 : 2)}`;
+  }
 }
 
 export function formatOrderDate(iso) {

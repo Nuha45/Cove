@@ -45,6 +45,8 @@ if (jwtSecret.length < 32 || jwtSecret.includes('replace-with')) {
   throw new Error('JWT_SECRET must be a real secret of at least 32 characters.');
 }
 
+const trialDays = Number(process.env.COVE_TRIAL_DAYS || 30);
+
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT) || 5000,
@@ -53,4 +55,22 @@ module.exports = {
   jwtExpiresIn: jwtDuration.expiresIn,
   jwtMaxAgeMs: jwtDuration.maxAgeMs,
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  // Optional until Razorpay is configured. Billing endpoints fail clearly without them.
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    planId: process.env.RAZORPAY_PLAN_ID || '',
+  },
+  trialDays: Number.isFinite(trialDays) && trialDays > 0 ? trialDays : 30,
+  // New registrations get a server-side trial when true (default).
+  grantTrialOnRegister: process.env.COVE_GRANT_TRIAL_ON_REGISTER !== 'false',
+  // Phase 8A keeps the app usable while billing is tested.
+  enforceBilling: process.env.COVE_ENFORCE_BILLING === 'true',
+  // Optional AI marketing provider (OpenAI-compatible). Never expose to the client.
+  ai: {
+    provider: process.env.AI_PROVIDER || 'openai',
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  },
 };

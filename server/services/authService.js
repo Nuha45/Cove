@@ -5,6 +5,7 @@ const Business = require('../models/Business');
 const ApiError = require('../utils/ApiError');
 const { uniqueSlug } = require('../utils/slugify');
 const { signToken, verifyToken } = require('./tokenService');
+const billingService = require('./billingService');
 
 const BCRYPT_ROUNDS = 12;
 let dummyHashPromise;
@@ -58,10 +59,14 @@ async function register(input) {
       role: 'owner',
       businessId,
     });
+    // One server-side trial per new business. Never trust client trial dates.
+    await billingService.createTrialForBusiness(businessId);
     const token = signToken(user);
     return { user, business, token };
   } catch (err) {
     await Business.deleteOne({ _id: businessId });
+    const Subscription = require('../models/Subscription');
+    await Subscription.deleteOne({ businessId }).catch(() => {});
     if (err.code === 11000 && err.keyPattern?.email) {
       throw new ApiError(409, 'An account with this email already exists.');
     }

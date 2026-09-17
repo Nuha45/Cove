@@ -5,6 +5,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const routes = require('./routes');
+const webhookRoutes = require('./routes/webhookRoutes');
 const notFound = require('./middleware/notFound');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -16,6 +17,10 @@ app.use(cors({
   origin: env.clientOrigin,
   credentials: true,
 }));
+
+// Razorpay signature verification needs the exact raw body — mount before JSON parsing.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
