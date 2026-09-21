@@ -144,7 +144,7 @@ describe('orders', { timeout: 180000 }, () => {
     assert.equal(created.data.order.items[0].subtotal, 350);
     assert.equal(created.data.order.subtotal, 350);
     assert.equal(created.data.order.total, 350);
-    assert.equal(created.data.order.paymentStatus, 'Pending');
+    assert.equal(created.data.order.paymentStatus, 'Payment Pending');
     assert.equal(created.data.order.status, 'New');
     assert.equal(created.data.order.businessId, undefined);
     assert.equal(JSON.stringify(created.data).includes('stockRestored'), false);
@@ -439,6 +439,13 @@ describe('orders', { timeout: 180000 }, () => {
       price: 350,
       stockQuantity: 6,
     });
+    const feeSettings = await api('PATCH', '/api/business/settings', {
+      token: owner.token,
+      body: { deliveryFee: 40 },
+    });
+    assert.equal(feeSettings.status, 200, JSON.stringify(feeSettings.data));
+    assert.equal(feeSettings.data.business.deliveryFee, 40);
+
     const phone = `91${String(Date.now()).slice(-8)}`;
     const first = await api('POST', '/api/orders', {
       token: owner.token,
@@ -447,7 +454,7 @@ describe('orders', { timeout: 180000 }, () => {
         phone: '9111111111',
         deliveryMethod: 'Delivery',
         deliveryAddress: '12 Cove Lane, Kochi',
-        deliveryFee: 40,
+        deliveryFee: 999,
         notes: 'Leave at the gate',
       }),
     });
@@ -461,7 +468,10 @@ describe('orders', { timeout: 180000 }, () => {
       token: owner.token,
       body: orderBody(product.id, 1, { deliveryFee: 40 }),
     });
-    assert.equal(pickupFee.status, 400);
+    assert.equal(pickupFee.status, 201, JSON.stringify(pickupFee.data));
+    assert.equal(pickupFee.data.order.deliveryFee, 0);
+    assert.equal(pickupFee.data.order.total, 350);
+
     const missingAddress = await api('POST', '/api/orders', {
       token: owner.token,
       body: orderBody(product.id, 1, { deliveryMethod: 'Delivery', deliveryFee: 10 }),
@@ -500,7 +510,7 @@ describe('orders', { timeout: 180000 }, () => {
     assert.equal(paid.status, 200);
     const paidList = await api('GET', '/api/orders?paymentStatus=Paid', { token: owner.token });
     assert.equal(paidList.data.orders.some((order) => order.id === third.data.order.id), true);
-    const pendingList = await api('GET', '/api/orders?paymentStatus=Pending', { token: owner.token });
+    const pendingList = await api('GET', '/api/orders?paymentStatus=Payment Pending', { token: owner.token });
     assert.equal(pendingList.data.orders.some((order) => order.id === third.data.order.id), false);
     const statusList = await api('GET', '/api/orders?status=New', { token: owner.token });
     assert.equal(statusList.data.orders.every((order) => order.status === 'New'), true);
@@ -512,5 +522,96 @@ describe('orders', { timeout: 180000 }, () => {
     assert.equal(badStatus.status, 400);
     const badId = await api('GET', '/api/orders/not-an-id', { token: owner.token });
     assert.equal(badId.status, 400);
+  });
+
+  it('applies saved business delivery fee and ignores invalid client values', async () => {
+    const product = await addProduct(owner.token, {
+      name: 'Fee Guard Rings',
+      price: 200,
+      stockQuantity: 5,
+    });
+
+    const setForty = await api('PATCH', '/api/business/settings', {
+      token: owner.token,
+      body: { deliveryFee: 40 },
+    });
+    assert.equal(setForty.status, 200);
+    assert.equal(setForty.data.business.deliveryFee, 40);
+
+    const withForgedFee = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: orderBody(product.id, 1, {
+        customerName: 'Fee Forger',
+        phone: '9333333333',
+        deliveryMethod: 'Delivery',
+        deliveryAddress: '44 Fee Street, Kochi',
+        deliveryFee: 999,
+      }),
+    });
+    assert.equal(withForgedFee.status, 201, JSON.stringify(withForgedFee.data));
+    assert.equal(withForgedFee.data.order.deliveryFee, 40);
+    assert.equal(withForgedFee.data.order.total, 240);
+
+    const withInvalidFee = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: orderBody(product.id, 1, {
+        customerName: 'Bad Fee Buyer',
+        phone: '9444444444',
+        deliveryMethod: 'Delivery',
+        deliveryAddress: '55 Fee Street, Kochi',
+        deliveryFee: -25,
+      }),
+    });
+    assert.equal(withInvalidFee.status, 201, JSON.stringify(withInvalidFee.data));
+    assert.equal(withInvalidFee.data.order.deliveryFee, 40);
+    assert.equal(withInvalidFee.data.order.total, 240);
+
+    const withNaNFee = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: orderBody(product.id, 1, {
+        customerName: 'NaN Fee Buyer',
+        phone: '9555555555',
+        deliveryMethod: 'Delivery',
+        deliveryAddress: '66 Fee Street, Kochi',
+        deliveryFee: 'not-a-number',
+      }),
+    });
+    assert.equal(withNaNFee.status, 201, JSON.stringify(withNaNFee.data));
+    assert.equal(withNaNFee.data.order.deliveryFee, 40);
+    assert.equal(withNaNFee.data.order.total, 240);
+
+    const setTwentyFive = await api('PATCH', '/api/business/settings', {
+      token: owner.token,
+      body: { deliveryFee: 25 },
+    });
+    assert.equal(setTwentyFive.status, 200);
+    assert.equal(setTwentyFive.data.business.deliveryFee, 25);
+
+    const afterChange = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: orderBody(product.id, 1, {
+        customerName: 'Updated Fee Buyer',
+        phone: '9666666666',
+        deliveryMethod: 'Delivery',
+        deliveryAddress: '77 Fee Street, Kochi',
+        deliveryFee: 1,
+      }),
+    });
+    assert.equal(afterChange.status, 201, JSON.stringify(afterChange.data));
+    assert.equal(afterChange.data.order.deliveryFee, 25);
+    assert.equal(afterChange.data.order.total, 225);
+
+    const pickupAfterChange = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: orderBody(product.id, 1, {
+        customerName: 'Pickup Fee Buyer',
+        phone: '9777777777',
+        deliveryMethod: 'Pickup',
+        deliveryFee: 25,
+      }),
+    });
+    assert.equal(pickupAfterChange.status, 201, JSON.stringify(pickupAfterChange.data));
+    assert.equal(pickupAfterChange.data.order.deliveryFee, 0);
+    assert.equal(pickupAfterChange.data.order.total, 200);
   });
 });

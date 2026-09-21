@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { STATUSES, PAYMENT_STATUSES, DELIVERY_METHODS } = require('../utils/orderStatus');
+const { PAYMENT_METHODS } = require('../utils/paymentMethods');
 
 const itemSchema = new mongoose.Schema(
   {
@@ -60,6 +61,41 @@ const customerSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const paymentEventSchema = new mongoose.Schema(
+  {
+    at: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    fromStatus: {
+      type: String,
+      required: true,
+    },
+    toStatus: {
+      type: String,
+      required: true,
+    },
+    actorType: {
+      type: String,
+      enum: ['system', 'customer', 'seller'],
+      required: true,
+    },
+    actorUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    note: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: '',
+    },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     // Always set from the logged-in user's business, never from the request.
@@ -104,7 +140,41 @@ const orderSchema = new mongoose.Schema(
     paymentStatus: {
       type: String,
       enum: PAYMENT_STATUSES,
-      default: 'Pending',
+      default: 'Payment Pending',
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['', ...PAYMENT_METHODS],
+      default: '',
+    },
+    paymentReference: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+    paymentReferenceSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    paymentVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+    paymentVerifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    paymentRejectionNote: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+      default: '',
+    },
+    paymentEvents: {
+      type: [paymentEventSchema],
+      default: [],
     },
     status: {
       type: String,
@@ -140,6 +210,13 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // SHA-256 of the one-time public confirmation token. Raw token is never stored.
+    // Only public storefront orders set this; seller-created orders leave it unset.
+    confirmationTokenHash: {
+      type: String,
+      select: false,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );
@@ -149,6 +226,30 @@ orderSchema.index({ businessId: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, paymentStatus: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, customerId: 1, createdAt: -1 });
+orderSchema.index(
+  { confirmationTokenHash: 1 },
+  { unique: true, sparse: true }
+);
+
+function paymentPublicFields(doc) {
+  return {
+    paymentStatus: doc.paymentStatus,
+    paymentMethod: doc.paymentMethod || '',
+    paymentReference: doc.paymentReference || '',
+    paymentReferenceSubmittedAt: doc.paymentReferenceSubmittedAt || null,
+    paymentVerifiedAt: doc.paymentVerifiedAt || null,
+    paymentVerifiedBy: doc.paymentVerifiedBy ? doc.paymentVerifiedBy.toString() : null,
+    paymentRejectionNote: doc.paymentRejectionNote || '',
+    paymentEvents: (doc.paymentEvents || []).map((event) => ({
+      at: event.at,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      actorType: event.actorType,
+      actorUserId: event.actorUserId ? event.actorUserId.toString() : null,
+      note: event.note || '',
+    })),
+  };
+}
 
 orderSchema.methods.toPublic = function toPublic() {
   return {
@@ -170,7 +271,7 @@ orderSchema.methods.toPublic = function toPublic() {
     subtotal: this.subtotal,
     deliveryFee: this.deliveryFee,
     total: this.total,
-    paymentStatus: this.paymentStatus,
+    ...paymentPublicFields(this),
     status: this.status,
     deliveryMethod: this.deliveryMethod,
     deliveryAddress: this.deliveryAddress || '',
@@ -180,7 +281,7 @@ orderSchema.methods.toPublic = function toPublic() {
   };
 };
 
-// Guest confirmation. No Mongo ids and no seller-only fields.
+// Guest confirmation. No Mongo ids and no seller-only verification actor ids.
 orderSchema.methods.toCustomerConfirmation = function toCustomerConfirmation() {
   return {
     orderNumber: this.orderNumber,
@@ -197,6 +298,10 @@ orderSchema.methods.toCustomerConfirmation = function toCustomerConfirmation() {
     deliveryFee: this.deliveryFee,
     total: this.total,
     paymentStatus: this.paymentStatus,
+    paymentMethod: this.paymentMethod || '',
+    paymentReference: this.paymentReference || '',
+    paymentReferenceSubmittedAt: this.paymentReferenceSubmittedAt || null,
+    paymentVerifiedAt: this.paymentVerifiedAt || null,
     status: this.status,
     deliveryMethod: this.deliveryMethod,
     deliveryAddress: this.deliveryAddress || '',

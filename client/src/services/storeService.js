@@ -12,6 +12,16 @@ export function createStoreOrder(slug, input) {
   return api.post(`/store/${slug}/orders`, input).then((res) => res.data);
 }
 
+export function getStoreOrderConfirmation(slug, token) {
+  return api.get(`/store/${slug}/orders/confirm/${encodeURIComponent(token)}`).then((res) => res.data);
+}
+
+export function submitStorePaymentReference(slug, token, input) {
+  return api
+    .post(`/store/${slug}/orders/confirm/${encodeURIComponent(token)}/payment`, input)
+    .then((res) => res.data);
+}
+
 export function createStoreWant(slug, input) {
   return api.post(`/store/${slug}/wants`, input).then((res) => res.data);
 }

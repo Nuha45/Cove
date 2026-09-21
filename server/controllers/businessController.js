@@ -16,6 +16,9 @@ const updateSettings = asyncHandler(async (req, res) => {
   const fields = [
     'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
     'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
+    'paymentQrEnabled', 'paymentLinkEnabled', 'paymentInstructionsEnabled', 'payOnPickupEnabled',
+    'paymentLink', 'paymentQrImage', 'paymentInstructions',
+    'emailNewOrders', 'emailPayments', 'emailCustomerWants',
   ];
   fields.forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(req.body, field)) {

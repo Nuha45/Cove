@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../layouts/AuthLayout';
+import PasswordField from '../components/ui/PasswordField';
 import { useAuth } from '../context/AuthContext';
 import { CATEGORIES } from '../utils/categories';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
@@ -92,17 +93,23 @@ export default function RegisterPage() {
           <input name="email" type="email" autoComplete="email" value={form.email} onChange={update} placeholder="you@example.com" />
           {errors.email ? <span className="field-error">{errors.email}</span> : null}
         </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="new-password" value={form.password} onChange={update} placeholder="At least 8 characters" />
-          <span className="hint">Use a letter and a number. We never store the password itself.</span>
-          {errors.password ? <span className="field-error">{errors.password}</span> : null}
-        </label>
-        <label>
-          Confirm password
-          <input name="confirmPassword" type="password" autoComplete="new-password" value={form.confirmPassword} onChange={update} />
-          {errors.confirmPassword ? <span className="field-error">{errors.confirmPassword}</span> : null}
-        </label>
+        <PasswordField
+          name="password"
+          autoComplete="new-password"
+          value={form.password}
+          onChange={update}
+          placeholder="At least 8 characters"
+          hint="Use a letter and a number. We never store the password itself."
+          error={errors.password}
+        />
+        <PasswordField
+          name="confirmPassword"
+          label="Confirm password"
+          autoComplete="new-password"
+          value={form.confirmPassword}
+          onChange={update}
+          error={errors.confirmPassword}
+        />
         <label>
           Business name
           <input name="businessName" value={form.businessName} onChange={update} placeholder="Zahra Jewelry" />

@@ -73,4 +73,13 @@ module.exports = {
     apiKey: process.env.OPENAI_API_KEY || '',
     model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   },
+  // Optional transactional email. Missing config must not crash the app.
+  email: {
+    provider: process.env.EMAIL_PROVIDER || '',
+    from: process.env.EMAIL_FROM || '',
+    apiKey: process.env.EMAIL_API_KEY || '',
+    // When true (dev only), password-reset meta may include the reset URL for local debugging.
+    debugLinks: process.env.EMAIL_DEBUG_LINKS === 'true' && (process.env.NODE_ENV || 'development') !== 'production',
+  },
+  appUrl: process.env.APP_URL || process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 };

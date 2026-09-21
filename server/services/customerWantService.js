@@ -44,6 +44,15 @@ async function createPublic(slug, input) {
     status: 'New',
   });
 
+  setImmediate(() => {
+    const notifyEvents = require('./notifyEvents');
+    notifyEvents.notifyCustomerWant({
+      businessId: business._id,
+      wantId: want._id,
+      preview: want.request,
+    }).catch(() => {});
+  });
+
   return want;
 }
 

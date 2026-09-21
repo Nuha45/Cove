@@ -1,5 +1,10 @@
+const {
+  PAYMENT_STATUSES,
+  canSellerSetPayment,
+  paymentTransitionMessage,
+} = require('./paymentMethods');
+
 const STATUSES = ['New', 'Confirmed', 'Preparing', 'Ready', 'Completed', 'Cancelled'];
-const PAYMENT_STATUSES = ['Pending', 'Paid'];
 const DELIVERY_METHODS = ['Pickup', 'Delivery'];
 
 // Forward moves and cancellation only. Completed and Cancelled are final.
@@ -29,4 +34,6 @@ module.exports = {
   TRANSITIONS,
   canTransition,
   transitionMessage,
+  canSellerSetPayment,
+  paymentTransitionMessage,
 };

@@ -40,8 +40,8 @@ const create = asyncHandler(async (req, res) => {
     })),
     deliveryMethod: req.body.deliveryMethod,
     deliveryAddress: req.body.deliveryAddress,
-    deliveryFee: req.body.deliveryFee,
     notes: req.body.notes,
+    paymentMethod: req.body.paymentMethod,
   });
   res.status(201).json({ order: order.toPublic() });
 });
@@ -54,7 +54,15 @@ const update = asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'paymentStatus')) {
     input.paymentStatus = req.body.paymentStatus;
   }
-  const order = await orderService.update(req.businessId, req.params.id, input);
+  if (Object.prototype.hasOwnProperty.call(req.body, 'paymentRejectionNote')) {
+    input.paymentRejectionNote = req.body.paymentRejectionNote;
+  }
+  const order = await orderService.update(
+    req.businessId,
+    req.params.id,
+    input,
+    req.user?._id || null
+  );
   res.json({ order: order.toPublic() });
 });
 

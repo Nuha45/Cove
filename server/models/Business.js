@@ -83,9 +83,91 @@ const businessSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Seller-controlled customer payment methods. Cove never collects these funds.
+    paymentQrEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    paymentLinkEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    paymentInstructionsEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    payOnPickupEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    paymentLink: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: '',
+    },
+    paymentQrImage: {
+      type: String,
+      trim: true,
+      maxlength: 260,
+      default: '',
+    },
+    paymentInstructions: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: '',
+    },
+    emailNewOrders: {
+      type: Boolean,
+      default: true,
+    },
+    emailPayments: {
+      type: Boolean,
+      default: true,
+    },
+    emailCustomerWants: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );
+
+function paymentSettings(doc) {
+  return {
+    paymentQrEnabled: Boolean(doc.paymentQrEnabled),
+    paymentLinkEnabled: Boolean(doc.paymentLinkEnabled),
+    paymentInstructionsEnabled: Boolean(doc.paymentInstructionsEnabled),
+    payOnPickupEnabled: doc.payOnPickupEnabled !== false,
+    paymentLink: doc.paymentLink || '',
+    paymentQrImage: doc.paymentQrImage || '',
+    paymentInstructions: doc.paymentInstructions || '',
+    emailNewOrders: doc.emailNewOrders !== false,
+    emailPayments: doc.emailPayments !== false,
+    emailCustomerWants: doc.emailCustomerWants !== false,
+  };
+}
+
+// Only enable methods that are turned on and have the required content.
+function publicPayments(doc) {
+  const qrEnabled = Boolean(doc.paymentQrEnabled) && Boolean(doc.paymentQrImage);
+  const linkEnabled = Boolean(doc.paymentLinkEnabled) && Boolean(doc.paymentLink);
+  const instructionsEnabled = Boolean(doc.paymentInstructionsEnabled)
+    && Boolean(String(doc.paymentInstructions || '').trim());
+  const payOnPickupEnabled = doc.payOnPickupEnabled !== false;
+
+  return {
+    qrEnabled,
+    linkEnabled,
+    instructionsEnabled,
+    payOnPickupEnabled,
+    paymentLink: linkEnabled ? doc.paymentLink : '',
+    paymentQrImage: qrEnabled ? doc.paymentQrImage : '',
+    paymentInstructions: instructionsEnabled ? String(doc.paymentInstructions || '').trim() : '',
+    hasConfiguredMethod: qrEnabled || linkEnabled || instructionsEnabled || payOnPickupEnabled,
+  };
+}
 
 businessSchema.methods.toPublic = function toPublic() {
   return {
@@ -103,10 +185,10 @@ businessSchema.methods.toPublic = function toPublic() {
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
     storefrontActive: this.storefrontActive !== false,
+    ...paymentSettings(this),
   };
 };
 
-// Seller settings editor. Same safe fields as toPublic for now.
 businessSchema.methods.toSettings = function toSettings() {
   return this.toPublic();
 };
@@ -127,6 +209,17 @@ businessSchema.methods.toStorefront = function toStorefront() {
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
     storefrontActive: this.storefrontActive !== false,
+    payments: publicPayments(this),
+  };
+};
+
+businessSchema.methods.toConfirmation = function toConfirmation() {
+  return {
+    name: this.name,
+    slug: this.slug,
+    currency: this.currency || 'INR',
+    phone: this.phone || '',
+    payments: publicPayments(this),
   };
 };
 

@@ -15,6 +15,8 @@ const tabs = [
   'Business Profile',
   'Storefront',
   'Ordering & Delivery',
+  'Customer payments',
+  'Notifications',
 ];
 
 const emptyForm = {
@@ -31,6 +33,16 @@ const emptyForm = {
   deliveryEnabled: true,
   deliveryFee: '0',
   storefrontActive: true,
+  paymentQrEnabled: false,
+  paymentLinkEnabled: false,
+  paymentInstructionsEnabled: false,
+  payOnPickupEnabled: true,
+  paymentLink: '',
+  paymentQrImage: '',
+  paymentInstructions: '',
+  emailNewOrders: true,
+  emailPayments: true,
+  emailCustomerWants: true,
 };
 
 function toForm(business) {
@@ -48,6 +60,16 @@ function toForm(business) {
     deliveryEnabled: business?.deliveryEnabled !== false,
     deliveryFee: String(business?.deliveryFee ?? 0),
     storefrontActive: business?.storefrontActive !== false,
+    paymentQrEnabled: Boolean(business?.paymentQrEnabled),
+    paymentLinkEnabled: Boolean(business?.paymentLinkEnabled),
+    paymentInstructionsEnabled: Boolean(business?.paymentInstructionsEnabled),
+    payOnPickupEnabled: business?.payOnPickupEnabled !== false,
+    paymentLink: business?.paymentLink || '',
+    paymentQrImage: business?.paymentQrImage || '',
+    paymentInstructions: business?.paymentInstructions || '',
+    emailNewOrders: business?.emailNewOrders !== false,
+    emailPayments: business?.emailPayments !== false,
+    emailCustomerWants: business?.emailCustomerWants !== false,
   };
 }
 
@@ -55,6 +77,7 @@ export default function SettingsPage() {
   const { refresh } = useAuth();
   const { notify } = useOutletContext();
   const fileInput = useRef(null);
+  const qrInput = useRef(null);
   const [tab, setTab] = useState(tabs[0]);
   const [form, setForm] = useState(emptyForm);
   const [loadState, setLoadState] = useState('loading');
@@ -63,6 +86,7 @@ export default function SettingsPage() {
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [logoError, setLogoError] = useState('');
+  const [qrError, setQrError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +150,27 @@ export default function SettingsPage() {
     reader.readAsDataURL(file);
   }
 
+  function onQrSelected(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    setQrError('');
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setQrError('Please upload a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > 450 * 1024) {
+      setQrError('Please use an image under 450KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({ ...current, paymentQrImage: String(reader.result || '') }));
+    };
+    reader.onerror = () => setQrError('That image could not be read.');
+    reader.readAsDataURL(file);
+  }
+
   function clientErrors() {
     const next = {};
     if (form.name.trim().length < 2) next.name = 'Please enter your business name.';
@@ -140,6 +185,25 @@ export default function SettingsPage() {
     }
     const fee = Number(form.deliveryFee);
     if (!Number.isFinite(fee) || fee < 0) next.deliveryFee = 'Delivery fee cannot be negative.';
+    if (form.paymentLinkEnabled && form.paymentLink.trim()) {
+      try {
+        const url = new URL(form.paymentLink.trim());
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          next.paymentLink = 'Please enter a valid payment link starting with https://';
+        }
+      } catch {
+        next.paymentLink = 'Please enter a valid payment link starting with https://';
+      }
+    }
+    if (form.paymentQrEnabled && !form.paymentQrImage) {
+      next.paymentQrImage = 'Upload a QR image or turn off QR payments.';
+    }
+    if (form.paymentLinkEnabled && !form.paymentLink.trim()) {
+      next.paymentLink = 'Add a payment link or turn off payment link.';
+    }
+    if (form.paymentInstructionsEnabled && !form.paymentInstructions.trim()) {
+      next.paymentInstructions = 'Add payment instructions or turn this option off.';
+    }
     return next;
   }
 
@@ -166,6 +230,16 @@ export default function SettingsPage() {
         deliveryEnabled: form.deliveryEnabled,
         deliveryFee: Number(form.deliveryFee || 0),
         storefrontActive: form.storefrontActive,
+        paymentQrEnabled: form.paymentQrEnabled,
+        paymentLinkEnabled: form.paymentLinkEnabled,
+        paymentInstructionsEnabled: form.paymentInstructionsEnabled,
+        payOnPickupEnabled: form.payOnPickupEnabled,
+        paymentLink: form.paymentLink.trim(),
+        paymentQrImage: form.paymentQrImage,
+        paymentInstructions: form.paymentInstructions.trim(),
+        emailNewOrders: form.emailNewOrders,
+        emailPayments: form.emailPayments,
+        emailCustomerWants: form.emailCustomerWants,
       });
       setForm(toForm(result.business));
       await refresh();
@@ -219,6 +293,8 @@ export default function SettingsPage() {
                 {tab === 'Business Profile' && 'This information appears on your public storefront.'}
                 {tab === 'Storefront' && 'Control your public shop link and whether customers can browse.'}
                 {tab === 'Ordering & Delivery' && 'Choose how customers receive orders and what delivery costs.'}
+                {tab === 'Customer payments' && 'Tell customers how to pay you directly. Cove does not collect or verify these payments.'}
+                {tab === 'Notifications' && 'Choose which email alerts Cove sends to your account email.'}
               </p>
             </div>
             <button className="primary" type="submit" disabled={saving}>
@@ -364,6 +440,143 @@ export default function SettingsPage() {
               {!form.pickupEnabled && !form.deliveryEnabled ? (
                 <p className="form-error wide">Both pickup and delivery are off. Customers will not be able to place orders.</p>
               ) : null}
+            </div>
+          ) : null}
+
+          {tab === 'Customer payments' ? (
+            <div className="form-grid">
+              <p className="muted wide">
+                Customers pay you directly. You confirm payment yourself in Orders. Cove never receives these funds.
+              </p>
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>{form.currency === 'INR' ? 'UPI / QR code' : 'QR code'}</strong>
+                  <small className="muted">Show your payment QR on checkout and confirmation.</small>
+                </span>
+                <input name="paymentQrEnabled" type="checkbox" checked={form.paymentQrEnabled} onChange={update} />
+              </label>
+              {form.paymentQrEnabled ? (
+                <div className="wide logo-upload">
+                  {form.paymentQrImage ? (
+                    <img className="payment-qr-preview" src={mediaUrl(form.paymentQrImage)} alt="Payment QR preview" />
+                  ) : (
+                    <div className="payment-qr-preview empty">No QR yet</div>
+                  )}
+                  <div>
+                    <strong>QR image</strong>
+                    <p className="muted">JPG, PNG, or WebP · under 450KB</p>
+                    {qrError ? <span className="field-error">{qrError}</span> : null}
+                    {errors.paymentQrImage ? <span className="field-error">{errors.paymentQrImage}</span> : null}
+                  </div>
+                  <div className="logo-actions">
+                    <button className="secondary" type="button" onClick={() => qrInput.current?.click()}>
+                      Upload QR
+                    </button>
+                    {form.paymentQrImage ? (
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() => setForm((current) => ({ ...current, paymentQrImage: '' }))}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    ref={qrInput}
+                    className="product-file-input"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={onQrSelected}
+                  />
+                </div>
+              ) : null}
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>{form.currency === 'INR' ? 'UPI / payment link' : 'Payment link'}</strong>
+                  <small className="muted">Share a link customers can open to pay you.</small>
+                </span>
+                <input name="paymentLinkEnabled" type="checkbox" checked={form.paymentLinkEnabled} onChange={update} />
+              </label>
+              {form.paymentLinkEnabled ? (
+                <label className="wide">
+                  Payment link
+                  <input
+                    name="paymentLink"
+                    value={form.paymentLink}
+                    onChange={update}
+                    placeholder="https://"
+                    inputMode="url"
+                  />
+                  {errors.paymentLink ? <span className="field-error">{errors.paymentLink}</span> : null}
+                </label>
+              ) : null}
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Payment instructions</strong>
+                  <small className="muted">Bank transfer details or other written instructions.</small>
+                </span>
+                <input
+                  name="paymentInstructionsEnabled"
+                  type="checkbox"
+                  checked={form.paymentInstructionsEnabled}
+                  onChange={update}
+                />
+              </label>
+              {form.paymentInstructionsEnabled ? (
+                <label className="wide">
+                  Instructions
+                  <textarea
+                    name="paymentInstructions"
+                    value={form.paymentInstructions}
+                    onChange={update}
+                    maxLength={1000}
+                    rows={4}
+                    placeholder="Account name, UPI ID, or how you want to be paid."
+                  />
+                  {errors.paymentInstructions ? <span className="field-error">{errors.paymentInstructions}</span> : null}
+                </label>
+              ) : null}
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Pay on pickup</strong>
+                  <small className="muted">Let pickup customers pay when they collect the order.</small>
+                </span>
+                <input name="payOnPickupEnabled" type="checkbox" checked={form.payOnPickupEnabled} onChange={update} />
+              </label>
+            </div>
+          ) : null}
+
+          {tab === 'Notifications' ? (
+            <div className="form-grid">
+              <p className="muted wide">
+                These emails go to your Cove account email. In-app notifications always appear in the bell menu.
+              </p>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>New order emails</strong>
+                  <small className="muted">When a customer places an order on your storefront.</small>
+                </span>
+                <input name="emailNewOrders" type="checkbox" checked={form.emailNewOrders} onChange={update} />
+              </label>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Payment emails</strong>
+                  <small className="muted">When a customer submits a payment reference.</small>
+                </span>
+                <input name="emailPayments" type="checkbox" checked={form.emailPayments} onChange={update} />
+              </label>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Customer Want emails</strong>
+                  <small className="muted">When someone requests a product you do not list yet.</small>
+                </span>
+                <input name="emailCustomerWants" type="checkbox" checked={form.emailCustomerWants} onChange={update} />
+              </label>
             </div>
           ) : null}
         </section>

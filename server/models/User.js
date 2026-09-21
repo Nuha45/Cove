@@ -33,13 +33,29 @@ const userSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    // Increased on logout so an old stolen cookie stops working.
+    // Increased on logout / password reset so an old stolen cookie stops working.
     tokenVersion: {
       type: Number,
       default: 0,
     },
+    // SHA-256 of the one-time password reset token. Raw token is never stored.
+    passwordResetTokenHash: {
+      type: String,
+      select: false,
+      default: undefined,
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      select: false,
+      default: undefined,
+    },
   },
   { timestamps: true }
+);
+
+userSchema.index(
+  { passwordResetTokenHash: 1 },
+  { unique: true, sparse: true }
 );
 
 userSchema.methods.toPublic = function toPublic() {

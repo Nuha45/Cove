@@ -6,8 +6,12 @@ const ApiError = require('../utils/ApiError');
 const { uniqueSlug } = require('../utils/slugify');
 const { signToken, verifyToken } = require('./tokenService');
 const billingService = require('./billingService');
+const emailService = require('./emailService');
+const env = require('../config/env');
 
 const BCRYPT_ROUNDS = 12;
+const RESET_TTL_MS = 30 * 60 * 1000;
+const GENERIC_RESET_MESSAGE = 'If an account exists for this email, a password reset link has been sent.';
 let dummyHashPromise;
 
 function dummyPasswordHash() {
@@ -115,4 +119,63 @@ async function revokeToken(token) {
   );
 }
 
-module.exports = { register, login, getProfile, revokeToken };
+async function requestPasswordReset(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  const user = await User.findOne({ email: normalized });
+
+  // Always return the same message. Timing is padded with a dummy hash when unknown.
+  if (!user) {
+    await dummyPasswordHash();
+    return { message: GENERIC_RESET_MESSAGE };
+  }
+
+  const rawToken = emailService.createResetToken();
+  const tokenHash = emailService.hashResetToken(rawToken);
+  user.passwordResetTokenHash = tokenHash;
+  user.passwordResetExpiresAt = new Date(Date.now() + RESET_TTL_MS);
+  await user.save();
+
+  const resetUrl = `${env.appUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  await emailService.sendPasswordReset({
+    to: user.email,
+    name: user.name,
+    resetUrl,
+  });
+
+  return { message: GENERIC_RESET_MESSAGE };
+}
+
+async function resetPassword({ token, password }) {
+  const raw = String(token || '').trim();
+  if (!raw || raw.length < 32) {
+    throw new ApiError(400, 'Invalid or expired reset link.');
+  }
+
+  const tokenHash = emailService.hashResetToken(raw);
+  const user = await User.findOne({
+    passwordResetTokenHash: tokenHash,
+    passwordResetExpiresAt: { $gt: new Date() },
+  }).select('+passwordHash +passwordResetTokenHash +passwordResetExpiresAt');
+
+  if (!user) {
+    throw new ApiError(400, 'Invalid or expired reset link.');
+  }
+
+  user.passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  user.passwordResetTokenHash = undefined;
+  user.passwordResetExpiresAt = undefined;
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+
+  return { message: 'Your password has been reset. You can log in with your new password.' };
+}
+
+module.exports = {
+  register,
+  login,
+  getProfile,
+  revokeToken,
+  requestPasswordReset,
+  resetPassword,
+  GENERIC_RESET_MESSAGE,
+};

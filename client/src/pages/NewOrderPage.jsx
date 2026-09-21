@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Minus, Plus, Search } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
+import { getBusinessSettings } from '../services/businessService';
 import { listProducts } from '../services/productService';
 import { createOrder } from '../services/orderService';
 import { formatPrice } from '../utils/display';
@@ -13,7 +14,6 @@ const emptyCustomer = {
   email: '',
   deliveryMethod: 'Pickup',
   deliveryAddress: '',
-  deliveryFee: '',
   notes: '',
 };
 
@@ -26,6 +26,8 @@ export default function NewOrderPage() {
   const [productError, setProductError] = useState('');
   const [lines, setLines] = useState([]);
   const [form, setForm] = useState(emptyCustomer);
+  const [savedDeliveryFee, setSavedDeliveryFee] = useState(0);
+  const [currency, setCurrency] = useState('INR');
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +36,27 @@ export default function NewOrderPage() {
     const timer = window.setTimeout(() => setQuery(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSettings() {
+      try {
+        const result = await getBusinessSettings();
+        if (cancelled) return;
+        setSavedDeliveryFee(Number(result.business?.deliveryFee) || 0);
+        setCurrency(result.business?.currency || 'INR');
+      } catch {
+        if (cancelled) return;
+        setSavedDeliveryFee(0);
+      }
+    }
+
+    loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,10 +88,9 @@ export default function NewOrderPage() {
 
   const estimate = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
-    const fee = form.deliveryMethod === 'Delivery' ? Number(form.deliveryFee || 0) : 0;
-    const deliveryFee = Number.isFinite(fee) && fee > 0 ? fee : 0;
+    const deliveryFee = form.deliveryMethod === 'Delivery' ? savedDeliveryFee : 0;
     return { subtotal, deliveryFee, total: subtotal + deliveryFee };
-  }, [lines, form.deliveryMethod, form.deliveryFee]);
+  }, [lines, form.deliveryMethod, savedDeliveryFee]);
 
   function update(event) {
     const { name, value } = event.target;
@@ -118,10 +140,6 @@ export default function NewOrderPage() {
     if (form.deliveryMethod === 'Delivery' && form.deliveryAddress.trim().length < 5) {
       next.deliveryAddress = 'Please enter a delivery address.';
     }
-    if (form.deliveryMethod === 'Delivery' && form.deliveryFee !== '') {
-      const fee = Number(form.deliveryFee);
-      if (!Number.isFinite(fee) || fee < 0) next.deliveryFee = 'Please enter a valid delivery fee.';
-    }
     return next;
   }
 
@@ -146,7 +164,6 @@ export default function NewOrderPage() {
         })),
         deliveryMethod: form.deliveryMethod,
         deliveryAddress: form.deliveryMethod === 'Delivery' ? form.deliveryAddress.trim() : undefined,
-        deliveryFee: form.deliveryMethod === 'Delivery' ? Number(form.deliveryFee || 0) : 0,
         notes: form.notes.trim(),
       });
       navigate(`/orders/${result.order.id}`, { state: { created: true } });
@@ -198,7 +215,7 @@ export default function NewOrderPage() {
                   <div>
                     <strong>{product.name}</strong>
                     <small>
-                      {formatPrice(product.price)} · {product.stockQuantity} in stock
+                      {formatPrice(product.price, currency)} · {product.stockQuantity} in stock
                       {selected ? ` · ${selected.quantity} selected` : ''}
                     </small>
                   </div>
@@ -248,13 +265,11 @@ export default function NewOrderPage() {
                 Delivery fee
                 <input
                   name="deliveryFee"
-                  value={form.deliveryFee}
-                  onChange={update}
-                  inputMode="decimal"
-                  placeholder="0"
-                  aria-label="Delivery fee"
+                  value={formatPrice(savedDeliveryFee, currency)}
+                  readOnly
+                  aria-label="Delivery fee from settings"
                 />
-                {errors.deliveryFee ? <span className="field-error">{errors.deliveryFee}</span> : null}
+                <small className="muted">From Settings. Change it there if this fee is wrong.</small>
               </label>
             ) : null}
             {form.deliveryMethod === 'Delivery' ? (
@@ -284,7 +299,7 @@ export default function NewOrderPage() {
             <div className="line-row" key={line.productId}>
               <div>
                 <strong>{line.name}</strong>
-                <small>{formatPrice(line.price)} each · {line.stockQuantity} in stock</small>
+                <small>{formatPrice(line.price, currency)} each · {line.stockQuantity} in stock</small>
                 <div className="qty-control">
                   <button type="button" aria-label={`Decrease ${line.name}`} onClick={() => setQuantity(line.productId, line.quantity - 1)} disabled={line.quantity <= 1}>
                     <Minus size={14} />
@@ -301,7 +316,7 @@ export default function NewOrderPage() {
                 </div>
               </div>
               <div className="line-side">
-                <strong>{formatPrice(line.price * line.quantity)}</strong>
+                <strong>{formatPrice(line.price * line.quantity, currency)}</strong>
                 <button type="button" className="text-button" onClick={() => setLines((current) => current.filter((item) => item.productId !== line.productId))}>
                   Remove
                 </button>
@@ -309,9 +324,9 @@ export default function NewOrderPage() {
             </div>
           ))}
           <div className="totals">
-            <div><span>Subtotal</span><span>{formatPrice(estimate.subtotal)}</span></div>
-            <div><span>Delivery fee</span><span>{formatPrice(estimate.deliveryFee)}</span></div>
-            <div className="totals-total"><span>Estimated total</span><strong>{formatPrice(estimate.total)}</strong></div>
+            <div><span>Subtotal</span><span>{formatPrice(estimate.subtotal, currency)}</span></div>
+            <div><span>Delivery fee</span><span>{formatPrice(estimate.deliveryFee, currency)}</span></div>
+            <div className="totals-total"><span>Estimated total</span><strong>{formatPrice(estimate.total, currency)}</strong></div>
           </div>
           <p className="muted">Cove saves the product price when you place the order. A later price change will not change this order.</p>
           <button className="primary" type="submit" disabled={submitting || lines.length === 0}>

@@ -1,8 +1,9 @@
-import { Bell, ExternalLink, Menu, X } from 'lucide-react';
+import { ExternalLink, Menu, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { navItems } from '../../routes/navItems';
 import CoveLogo from '../brand/CoveLogo';
+import NotificationBell from './NotificationBell';
 import { storefrontPath } from '../../utils/storefront';
 
 export default function TopBar({ onMenu, menuOpen = false }) {
@@ -26,14 +27,7 @@ export default function TopBar({ onMenu, menuOpen = false }) {
       </div>
       <div className="mobile-page-title">{label}</div>
       <div className="top-actions">
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="Notifications"
-          title="Notifications will be added later"
-        >
-          <Bell size={19} />
-        </button>
+        <NotificationBell />
         {business?.slug ? (
           <a className="store-link" href={storePath} target="_blank" rel="noreferrer">
             <ExternalLink size={15} /> View storefront

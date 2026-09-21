@@ -39,15 +39,34 @@ const createOrder = asyncHandler(async (req, res) => {
     deliveryMethod: req.body.deliveryMethod,
     deliveryAddress: req.body.deliveryAddress,
     notes: req.body.notes,
+    paymentMethod: req.body.paymentMethod,
   });
 
+  // Raw token is returned once at create time. It is never logged or stored.
   res.status(201).json({
     order: result.order.toCustomerConfirmation(),
-    business: {
-      name: result.business.name,
-      slug: result.business.slug,
-      currency: result.business.currency || 'INR',
-    },
+    business: result.business.toConfirmation(),
+    confirmationToken: result.confirmationToken,
+  });
+});
+
+const getOrderConfirmation = asyncHandler(async (req, res) => {
+  const result = await storeService.getOrderConfirmation(req.params.slug, req.params.token);
+  res.json({
+    order: result.order.toCustomerConfirmation(),
+    business: result.business.toConfirmation(),
+  });
+});
+
+const submitPaymentReference = asyncHandler(async (req, res) => {
+  const result = await storeService.submitPaymentReference(req.params.slug, req.params.token, {
+    paymentReference: req.body.paymentReference,
+    paymentMethod: req.body.paymentMethod,
+  });
+  res.json({
+    message: 'Payment details saved. The seller still needs to confirm payment.',
+    order: result.order.toCustomerConfirmation(),
+    business: result.business.toConfirmation(),
   });
 });
 
@@ -70,5 +89,7 @@ module.exports = {
   getStorefront,
   getProduct,
   createOrder,
+  getOrderConfirmation,
+  submitPaymentReference,
   createWant,
 };

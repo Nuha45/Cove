@@ -189,13 +189,16 @@ describe('storefront', { timeout: 180000 }, () => {
     assert.equal(created.data.order.subtotal, 350);
     assert.equal(created.data.order.deliveryFee, 0);
     assert.equal(created.data.order.total, 350);
-    assert.equal(created.data.order.paymentStatus, 'Pending');
+    assert.equal(created.data.order.paymentStatus, 'Payment Pending');
     assert.equal(created.data.order.status, 'New');
     assert.equal(created.data.order.deliveryMethod, 'Delivery');
     assert.equal(created.data.order.deliveryAddress, '14 Palm Grove, Kochi');
     assert.equal(created.data.order.customer.name, 'Aisha Shah');
     assert.equal(created.data.order.id, undefined);
     assert.equal(created.data.order.items[0].productId, undefined);
+    assert.equal(typeof created.data.confirmationToken, 'string');
+    assert.ok(created.data.confirmationToken.length >= 32);
+    assert.equal(JSON.stringify(created.data).includes('confirmationTokenHash'), false);
     assert.equal(JSON.stringify(created.data).includes(String(other.businessId)), false);
     assert.equal(JSON.stringify(created.data).includes(String(owner.businessId)), false);
 
@@ -208,7 +211,7 @@ describe('storefront', { timeout: 180000 }, () => {
     assert.ok(saved);
     assert.equal(saved.customer.phone, '9876501234');
     assert.equal(saved.items[0].price, 350);
-    assert.equal(saved.paymentStatus, 'Pending');
+    assert.equal(saved.paymentStatus, 'Payment Pending');
     assert.equal(saved.status, 'New');
 
     const otherList = await api('GET', '/api/orders', { token: other.token });
@@ -318,5 +321,100 @@ describe('storefront', { timeout: 180000 }, () => {
       },
     });
     assert.equal(wrongShop.status, 400);
+  });
+
+  it('lets guests reload confirmations with a token and rejects unsafe lookups', async () => {
+    const product = await addProduct(owner.token, {
+      name: 'Confirm Token Ring',
+      price: 120,
+      stockQuantity: 4,
+      status: 'Active',
+    });
+
+    const created = await api('POST', `/api/store/${owner.slug}/orders`, {
+      body: {
+        customer: { name: 'Confirm Guest', phone: '9000012401', email: 'confirm@example.com' },
+        items: [{ productId: product.id, quantity: 1 }],
+        deliveryMethod: 'Pickup',
+        notes: 'Token confirmation probe',
+      },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.data));
+    const token = created.data.confirmationToken;
+    assert.equal(typeof token, 'string');
+    assert.equal(created.data.order.customer.phone, undefined);
+    assert.equal(created.data.order.customer.email, undefined);
+
+    const valid = await api('GET', `/api/store/${owner.slug}/orders/confirm/${encodeURIComponent(token)}`);
+    assert.equal(valid.status, 200, JSON.stringify(valid.data));
+    assert.equal(valid.data.order.orderNumber, created.data.order.orderNumber);
+    assert.equal(valid.data.order.customer.name, 'Confirm Guest');
+    assert.equal(valid.data.order.total, 120);
+    assert.equal(valid.data.business.slug, owner.slug);
+    assert.equal(valid.data.confirmationToken, undefined);
+    assert.equal(valid.data.order.customer.phone, undefined);
+    assert.equal(valid.data.order.customer.email, undefined);
+    assert.equal(valid.data.order.id, undefined);
+    assert.equal(JSON.stringify(valid.data).includes('confirmationTokenHash'), false);
+    assert.equal(JSON.stringify(valid.data).includes(String(owner.businessId)), false);
+    assert.equal(JSON.stringify(valid.data).includes(String(product.id)), false);
+
+    const missingToken = await api(
+      'GET',
+      `/api/store/${owner.slug}/orders/confirm/${encodeURIComponent('a'.repeat(43))}`
+    );
+    assert.equal(missingToken.status, 404);
+    assert.equal(missingToken.data.message, 'We could not find that order confirmation.');
+
+    const crossShop = await api('GET', `/api/store/${other.slug}/orders/confirm/${encodeURIComponent(token)}`);
+    assert.equal(crossShop.status, 404);
+    assert.equal(crossShop.data.message, 'We could not find that order confirmation.');
+
+    const byOrderNumber = await api(
+      'GET',
+      `/api/store/${owner.slug}/orders/${created.data.order.orderNumber}`
+    );
+    assert.equal(byOrderNumber.status, 404);
+
+    const sellerOrder = await api('POST', '/api/orders', {
+      token: owner.token,
+      body: {
+        customer: { name: 'Manual Guest', phone: '9000012402' },
+        items: [{ productId: product.id, quantity: 1 }],
+        deliveryMethod: 'Pickup',
+      },
+    });
+    assert.equal(sellerOrder.status, 201, JSON.stringify(sellerOrder.data));
+    assert.equal(sellerOrder.data.confirmationToken, undefined);
+    assert.ok(sellerOrder.data.order.id);
+  });
+
+  it('rate limits public confirmation lookups', async () => {
+    const product = await addProduct(owner.token, {
+      name: 'Confirm Rate Ring',
+      price: 90,
+      stockQuantity: 30,
+      status: 'Active',
+    });
+    const created = await api('POST', `/api/store/${owner.slug}/orders`, {
+      body: {
+        customer: { name: 'Rate Guest', phone: '9000012403' },
+        items: [{ productId: product.id, quantity: 1 }],
+        deliveryMethod: 'Pickup',
+      },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.data));
+    const token = created.data.confirmationToken;
+    const results = [];
+    for (let i = 0; i < 25; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const response = await api(
+        'GET',
+        `/api/store/${owner.slug}/orders/confirm/${encodeURIComponent(token)}`
+      );
+      results.push(response.status);
+    }
+    assert.equal(results.includes(429), true, JSON.stringify(results.slice(-5)));
+    assert.equal(results.filter((status) => status === 200).length >= 1, true);
   });
 });

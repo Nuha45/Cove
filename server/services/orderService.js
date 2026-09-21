@@ -3,8 +3,17 @@ const Order = require('../models/Order');
 const OrderCounter = require('../models/OrderCounter');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const Business = require('../models/Business');
 const ApiError = require('../utils/ApiError');
-const { canTransition, transitionMessage } = require('../utils/orderStatus');
+const {
+  canTransition,
+  transitionMessage,
+  canSellerSetPayment,
+  paymentTransitionMessage,
+} = require('../utils/orderStatus');
+const {
+  normalizePaymentMethod,
+} = require('../utils/paymentMethods');
 const customerService = require('./customerService');
 
 const OPEN_STATUSES = ['New', 'Confirmed', 'Preparing', 'Ready'];
@@ -129,9 +138,16 @@ async function create(businessId, input) {
   try {
     // Atlas runs as a replica set, so stock, customer stats, and the order commit together.
     const order = await session.withTransaction(async () => {
+      const business = await Business.findById(businessId).session(session);
+      if (!business) {
+        throw new ApiError(404, 'Business not found.');
+      }
       const items = await claimItems(businessId, requested, session);
       const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
-      const deliveryFee = input.deliveryMethod === 'Delivery' ? roundMoney(input.deliveryFee || 0) : 0;
+      // Always use the saved business delivery fee. Never trust a client-supplied amount.
+      const deliveryFee = input.deliveryMethod === 'Delivery'
+        ? roundMoney(business.deliveryFee || 0)
+        : 0;
       const total = roundMoney(subtotal + deliveryFee);
       const orderNumber = await nextOrderNumber(businessId, session);
       const customerSnapshot = {
@@ -149,7 +165,7 @@ async function create(businessId, input) {
         session
       );
 
-      const [created] = await Order.create([{
+      const orderDoc = {
         businessId,
         orderNumber,
         customerId: customer._id,
@@ -158,15 +174,38 @@ async function create(businessId, input) {
         subtotal,
         deliveryFee,
         total,
-        paymentStatus: 'Pending',
+        paymentStatus: 'Payment Pending',
+        paymentMethod: normalizePaymentMethod(input.paymentMethod) || '',
+        paymentEvents: [{
+          at: new Date(),
+          fromStatus: 'Payment Pending',
+          toStatus: 'Payment Pending',
+          actorType: 'system',
+          note: 'Order created',
+        }],
         status: 'New',
         deliveryMethod: input.deliveryMethod,
         deliveryAddress: input.deliveryMethod === 'Delivery' ? String(input.deliveryAddress || '').trim() : '',
         notes: input.notes || '',
         stockRestored: false,
-      }], { session });
+      };
+      // Public storefront checkouts may attach a hashed confirmation token. Seller orders omit it.
+      if (input.confirmationTokenHash) {
+        orderDoc.confirmationTokenHash = input.confirmationTokenHash;
+      }
+
+      const [created] = await Order.create([orderDoc], { session });
       return created;
     });
+
+    // Seller-created and storefront orders both land here. Storefront also notifies from storeService.
+    if (!input.confirmationTokenHash) {
+      setImmediate(() => {
+        const notifyEvents = require('./notifyEvents');
+        notifyEvents.notifyNewOrder({ businessId, order }).catch(() => {});
+      });
+    }
+
     return order;
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -208,7 +247,7 @@ async function summarize(businessId) {
             $cond: [
               {
                 $and: [
-                  { $eq: ['$paymentStatus', 'Pending'] },
+                  { $in: ['$paymentStatus', ['Pending', 'Payment Pending', 'Payment Submitted']] },
                   { $ne: ['$status', 'Cancelled'] },
                 ],
               },
@@ -222,7 +261,7 @@ async function summarize(businessId) {
             $cond: [
               {
                 $and: [
-                  { $eq: ['$paymentStatus', 'Pending'] },
+                  { $in: ['$paymentStatus', ['Pending', 'Payment Pending', 'Payment Submitted']] },
                   { $ne: ['$status', 'Cancelled'] },
                 ],
               },
@@ -304,7 +343,7 @@ async function restoreStock(items, businessId, session) {
   }
 }
 
-async function cancel(businessId, id, paymentStatus) {
+async function cancel(businessId, id, paymentStatus, actorUserId = null) {
   await ensureReady();
   const session = await mongoose.startSession();
   try {
@@ -320,7 +359,6 @@ async function cancel(businessId, id, paymentStatus) {
           $set: {
             status: 'Cancelled',
             stockRestored: true,
-            ...(paymentStatus ? { paymentStatus } : {}),
           },
         },
         { session, new: false }
@@ -344,7 +382,13 @@ async function cancel(businessId, id, paymentStatus) {
         previous._id,
         session
       );
-      return Order.findOne({ _id: id, businessId }).session(session);
+
+      const current = await Order.findOne({ _id: id, businessId }).session(session);
+      if (paymentStatus && paymentStatus !== current.paymentStatus) {
+        applySellerPaymentChange(current, paymentStatus, actorUserId, '');
+        await current.save({ session });
+      }
+      return current;
     });
     return order;
   } catch (err) {
@@ -355,21 +399,25 @@ async function cancel(businessId, id, paymentStatus) {
   }
 }
 
-async function update(businessId, id, input) {
+async function update(businessId, id, input, actorUserId = null) {
   const hasStatus = input.status !== undefined;
   const hasPayment = input.paymentStatus !== undefined;
   if (!hasStatus && !hasPayment) {
     throw new ApiError(400, 'Please change the order status or payment status.');
   }
   if (hasStatus && input.status === 'Cancelled') {
-    return cancel(businessId, id, hasPayment ? input.paymentStatus : undefined);
+    return cancel(businessId, id, hasPayment ? input.paymentStatus : undefined, actorUserId);
   }
 
+  let previousStatus = null;
+  let previousPayment = null;
   const session = await mongoose.startSession();
   try {
     const order = await session.withTransaction(async () => {
       const current = await Order.findOne({ _id: id, businessId }).session(session);
       if (!current) throw new ApiError(404, 'We could not find that order.');
+      previousStatus = current.status;
+      previousPayment = current.paymentStatus;
 
       if (hasStatus && input.status !== current.status) {
         if (!canTransition(current.status, input.status)) {
@@ -377,16 +425,69 @@ async function update(businessId, id, input) {
         }
         current.status = input.status;
       }
-      if (hasPayment) current.paymentStatus = input.paymentStatus;
+      if (hasPayment && input.paymentStatus !== current.paymentStatus) {
+        applySellerPaymentChange(current, input.paymentStatus, actorUserId, input.paymentRejectionNote);
+      }
       await current.save({ session });
       return current;
     });
+
+    setImmediate(() => {
+      const notifyEvents = require('./notifyEvents');
+      if (hasStatus && previousStatus && previousStatus !== order.status) {
+        notifyEvents.notifyOrderStatusChanged({
+          businessId,
+          order,
+          previousStatus,
+        }).catch(() => {});
+      }
+      if (hasPayment && previousPayment !== 'Paid' && order.paymentStatus === 'Paid') {
+        notifyEvents.notifyPaymentVerified({ businessId, order }).catch(() => {});
+      }
+    });
+
     return order;
   } catch (err) {
     if (err instanceof ApiError) throw err;
     throw err;
   } finally {
     await session.endSession();
+  }
+}
+
+function applySellerPaymentChange(order, nextStatus, actorUserId, rejectionNote) {
+  if (!canSellerSetPayment(order.paymentStatus, nextStatus)) {
+    throw new ApiError(400, paymentTransitionMessage(order.paymentStatus), [
+      { field: 'paymentStatus', message: paymentTransitionMessage(order.paymentStatus) },
+    ]);
+  }
+
+  const fromStatus = order.paymentStatus;
+  order.paymentStatus = nextStatus;
+  order.paymentEvents = order.paymentEvents || [];
+  order.paymentEvents.push({
+    at: new Date(),
+    fromStatus,
+    toStatus: nextStatus,
+    actorType: 'seller',
+    actorUserId: actorUserId || null,
+    note: nextStatus === 'Payment Rejected'
+      ? String(rejectionNote || '').trim().slice(0, 300)
+      : '',
+  });
+
+  if (nextStatus === 'Paid') {
+    order.paymentVerifiedAt = new Date();
+    order.paymentVerifiedBy = actorUserId || null;
+    order.paymentRejectionNote = '';
+  } else if (nextStatus === 'Payment Rejected') {
+    order.paymentVerifiedAt = null;
+    order.paymentVerifiedBy = actorUserId || null;
+    order.paymentRejectionNote = String(rejectionNote || '').trim().slice(0, 300);
+  } else if (nextStatus === 'Payment Pending') {
+    order.paymentVerifiedAt = null;
+    order.paymentVerifiedBy = null;
+    order.paymentRejectionNote = '';
   }
 }
 

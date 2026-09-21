@@ -85,11 +85,37 @@ const checkoutRules = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Notes must be 500 characters or fewer.'),
+  body('paymentMethod')
+    .optional({ values: 'falsy' })
+    .isIn(['qr', 'payment_link', 'instructions', 'pay_on_pickup'])
+    .withMessage('Please choose a valid payment method.'),
+];
+
+const confirmationRules = [
+  slugRule,
+  // Shape checks happen in the service so invalid tokens always get a generic 404.
+  param('token').trim().notEmpty(),
+];
+
+const paymentReferenceRules = [
+  slugRule,
+  param('token').trim().notEmpty(),
+  body('paymentReference')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 120 })
+    .withMessage('Payment reference must be 120 characters or fewer.'),
+  body('paymentMethod')
+    .optional({ values: 'falsy' })
+    .isIn(['qr', 'payment_link', 'instructions', 'pay_on_pickup'])
+    .withMessage('Please choose a valid payment method.'),
 ];
 
 module.exports = {
   storefrontQueryRules,
   productRules,
   checkoutRules,
+  confirmationRules,
+  paymentReferenceRules,
   slugRule,
 };

@@ -1,6 +1,7 @@
 const Business = require('../models/Business');
 const ApiError = require('../utils/ApiError');
 const { saveLogo } = require('../utils/businessLogo');
+const { savePaymentQr } = require('../utils/paymentQrImage');
 
 function asBoolean(value, fallback) {
   if (typeof value === 'boolean') return value;
@@ -65,8 +66,48 @@ async function updateSettings(businessId, input) {
   if (Object.prototype.hasOwnProperty.call(input, 'storefrontActive')) {
     business.storefrontActive = asBoolean(input.storefrontActive, business.storefrontActive);
   }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentQrEnabled')) {
+    business.paymentQrEnabled = asBoolean(input.paymentQrEnabled, business.paymentQrEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentLinkEnabled')) {
+    business.paymentLinkEnabled = asBoolean(input.paymentLinkEnabled, business.paymentLinkEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentInstructionsEnabled')) {
+    business.paymentInstructionsEnabled = asBoolean(
+      input.paymentInstructionsEnabled,
+      business.paymentInstructionsEnabled
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'payOnPickupEnabled')) {
+    business.payOnPickupEnabled = asBoolean(input.payOnPickupEnabled, business.payOnPickupEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentLink')) {
+    business.paymentLink = String(input.paymentLink || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentInstructions')) {
+    business.paymentInstructions = String(input.paymentInstructions || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'emailNewOrders')) {
+    business.emailNewOrders = asBoolean(input.emailNewOrders, business.emailNewOrders !== false);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'emailPayments')) {
+    business.emailPayments = asBoolean(input.emailPayments, business.emailPayments !== false);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'emailCustomerWants')) {
+    business.emailCustomerWants = asBoolean(
+      input.emailCustomerWants,
+      business.emailCustomerWants !== false
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(input, 'logo')) {
     business.logo = await saveLogo(businessId, input.logo, business.logo || '');
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentQrImage')) {
+    business.paymentQrImage = await savePaymentQr(
+      businessId,
+      input.paymentQrImage,
+      business.paymentQrImage || ''
+    );
   }
 
   try {

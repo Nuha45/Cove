@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import AuthLayout from '../layouts/AuthLayout';
+import PasswordField from '../components/ui/PasswordField';
 import { useAuth } from '../context/AuthContext';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 
@@ -9,10 +10,12 @@ const emptyForm = { email: '', password: '' };
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const resetSuccess = Boolean(location.state?.resetSuccess);
 
   function update(event) {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
@@ -50,6 +53,7 @@ export default function LoginPage() {
       }
     >
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
+        {resetSuccess ? <div className="form-success">Password updated. You can log in now.</div> : null}
         {formError ? <div className="form-error">{formError}</div> : null}
         <label>
           Email
@@ -63,18 +67,15 @@ export default function LoginPage() {
           />
           {errors.email ? <span className="field-error">{errors.email}</span> : null}
         </label>
-        <label>
-          Password
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={form.password}
-            onChange={update}
-            placeholder="Your password"
-          />
-          {errors.password ? <span className="field-error">{errors.password}</span> : null}
-        </label>
+        <PasswordField
+          name="password"
+          autoComplete="current-password"
+          value={form.password}
+          onChange={update}
+          placeholder="Your password"
+          error={errors.password}
+        />
+        <Link className="auth-muted-link" to="/forgot-password">Forgot password?</Link>
         <button className="primary" type="submit" disabled={submitting}>
           {submitting ? 'Logging in...' : 'Log in'}
         </button>

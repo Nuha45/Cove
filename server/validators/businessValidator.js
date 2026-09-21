@@ -12,6 +12,19 @@ function optionalBoolean(field, message) {
     });
 }
 
+const PAYMENT_FIELDS = [
+  'paymentQrEnabled',
+  'paymentLinkEnabled',
+  'paymentInstructionsEnabled',
+  'payOnPickupEnabled',
+  'paymentLink',
+  'paymentQrImage',
+  'paymentInstructions',
+  'emailNewOrders',
+  'emailPayments',
+  'emailCustomerWants',
+];
+
 const updateSettingsRules = [
   body('name')
     .optional()
@@ -69,6 +82,13 @@ const updateSettingsRules = [
   optionalBoolean('pickupEnabled', 'Pickup setting is not valid.'),
   optionalBoolean('deliveryEnabled', 'Delivery setting is not valid.'),
   optionalBoolean('storefrontActive', 'Storefront setting is not valid.'),
+  optionalBoolean('paymentQrEnabled', 'QR payment setting is not valid.'),
+  optionalBoolean('paymentLinkEnabled', 'Payment link setting is not valid.'),
+  optionalBoolean('paymentInstructionsEnabled', 'Payment instructions setting is not valid.'),
+  optionalBoolean('payOnPickupEnabled', 'Pay on pickup setting is not valid.'),
+  optionalBoolean('emailNewOrders', 'New order email setting is not valid.'),
+  optionalBoolean('emailPayments', 'Payment email setting is not valid.'),
+  optionalBoolean('emailCustomerWants', 'Customer Want email setting is not valid.'),
   body('deliveryFee')
     .optional()
     .custom((value) => {
@@ -81,6 +101,36 @@ const updateSettingsRules = [
       }
       return true;
     }),
+  body('paymentLink')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Payment link must be 500 characters or fewer.')
+    .custom((value) => {
+      if (!value) return true;
+      try {
+        const url = new URL(value);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          throw new Error('invalid');
+        }
+        return true;
+      } catch {
+        throw new Error('Please enter a valid payment link starting with https://');
+      }
+    }),
+  body('paymentQrImage')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null || value === '') return true;
+      if (typeof value !== 'string') throw new Error('Please upload a JPG, PNG, or WebP image.');
+      if (value.startsWith('data:image/') || value.startsWith('/uploads/payment-qr/')) return true;
+      throw new Error('Please upload a JPG, PNG, or WebP image.');
+    }),
+  body('paymentInstructions')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('Payment instructions must be 1000 characters or fewer.'),
   body().custom((value) => {
     if (!value || typeof value !== 'object') {
       throw new Error('Please change at least one setting.');
@@ -88,6 +138,7 @@ const updateSettingsRules = [
     const allowed = [
       'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
       'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
+      ...PAYMENT_FIELDS,
     ];
     if (!allowed.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {
       throw new Error('Please change at least one setting.');

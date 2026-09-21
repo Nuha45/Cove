@@ -28,9 +28,26 @@ The API runs at http://localhost:5000. In development, the React app sends `/api
 
 ## What is included
 
-- Register, login, logout, and "who am I"
+- Register, login, logout, forgot/reset password, and "who am I"
 - Passwords are hashed. The login token lives in an httpOnly cookie
+- Password reset uses a hashed, single-use, time-limited token
 - Each account gets its own business. Data requests are filtered by that business on the server
+- Seller email + in-app notifications for orders, payments, and customer wants
 - Dashboard shell matching the prototype navigation
 
-Products, orders, payments, and the public shop are not built yet.
+## Email setup (optional)
+
+Transactional email is optional. Without credentials, Cove still runs; password-reset and event emails are skipped (and logged in development).
+
+1. Copy `server/.env.example` values into `server/.env`.
+2. Set:
+   - `EMAIL_PROVIDER=resend` (or `console` / leave blank for local skip)
+   - `EMAIL_FROM=Cove <onboarding@yourdomain.com>`
+   - `EMAIL_API_KEY=...` (Resend API key)
+   - `APP_URL=http://localhost:5173` (frontend URL used in reset links)
+3. Restart the API.
+4. Use **Forgot password** on the login page to send a reset email.
+
+For automated tests, the server uses an in-memory email outbox (`EMAIL_PROVIDER=memory`) and never prints raw reset tokens.
+
+Never commit real email API keys.

@@ -8,10 +8,21 @@ import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import Badge from '../components/ui/Badge';
 import { listOrders } from '../services/orderService';
+import { listProducts } from '../services/productService';
 import { listCustomerWants } from '../services/customerWantService';
 import { formatEyebrowDate, formatPrice, greeting } from '../utils/display';
+import { getErrorMessage } from '../utils/errors';
 import { STATUS_TONE } from '../utils/orders';
 import { WANT_STATUS_TONE } from '../utils/customerWants';
+
+const LOW_STOCK_MAX = 2;
+const OPEN_WANT_STATUSES = ['New', 'In Progress'];
+
+function stockLabel(quantity) {
+  const count = Number(quantity) || 0;
+  if (count === 1) return '1 in stock';
+  return `${count} in stock`;
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -21,9 +32,13 @@ export default function DashboardPage() {
   const [attention, setAttention] = useState(null);
   const [wants, setWants] = useState(null);
   const [wantTotal, setWantTotal] = useState(null);
+  const [wantError, setWantError] = useState('');
+  const [lowStock, setLowStock] = useState(null);
+  const [lowStockError, setLowStockError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+
     listOrders({ limit: 1 })
       .then((result) => {
         if (!cancelled) setSummary(result.summary);
@@ -31,6 +46,7 @@ export default function DashboardPage() {
       .catch(() => {
         if (!cancelled) setSummary({ failed: true, todayPaidTotal: 0, new: 0, pendingPayment: 0, pendingPaymentTotal: 0 });
       });
+
     listOrders({ status: 'New', limit: 3 })
       .then((result) => {
         if (!cancelled) setAttention(result.orders);
@@ -38,19 +54,49 @@ export default function DashboardPage() {
       .catch(() => {
         if (!cancelled) setAttention([]);
       });
-    listCustomerWants({ status: 'New', limit: 3 })
-      .then((result) => {
-        if (!cancelled) {
-          setWants(result.wants);
-          setWantTotal(result.total);
-        }
+
+    Promise.all(
+      OPEN_WANT_STATUSES.map((status) => listCustomerWants({ status, limit: 3 })),
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const merged = results
+          .flatMap((result) => result.wants)
+          .sort((a, b) => {
+            const timeDiff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            if (timeDiff !== 0) return timeDiff;
+            return String(b.id).localeCompare(String(a.id));
+          })
+          .slice(0, 3);
+        const total = results.reduce((sum, result) => sum + Number(result.total || 0), 0);
+        setWants(merged);
+        setWantTotal(total);
+        setWantError('');
       })
-      .catch(() => {
-        if (!cancelled) {
-          setWants([]);
-          setWantTotal(0);
-        }
+      .catch((err) => {
+        if (cancelled) return;
+        setWants([]);
+        setWantTotal(0);
+        setWantError(getErrorMessage(err));
       });
+
+    // Default product list is Active + Draft (archived excluded). Tenant comes from the session cookie.
+    listProducts({ limit: 24 })
+      .then((result) => {
+        if (cancelled) return;
+        const items = (result.products || [])
+          .filter((product) => product.status !== 'Archived' && Number(product.stockQuantity) <= LOW_STOCK_MAX)
+          .sort((a, b) => Number(a.stockQuantity) - Number(b.stockQuantity))
+          .slice(0, 5);
+        setLowStock(items);
+        setLowStockError('');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLowStock([]);
+        setLowStockError(getErrorMessage(err));
+      });
+
     return () => {
       cancelled = true;
     };
@@ -95,7 +141,15 @@ export default function DashboardPage() {
           icon={Heart}
           label="Customer requests"
           value={wantTotal === null ? '—' : String(wantTotal)}
-          change={wantTotal ? 'Needs a look' : wantTotal === 0 ? 'None waiting' : 'Loading'}
+          change={
+            wantError
+              ? 'Unavailable'
+              : wantTotal
+                ? 'Needs a look'
+                : wantTotal === 0
+                  ? 'None waiting'
+                  : 'Loading'
+          }
           color="#FFE8DC"
         />
       </div>
@@ -122,10 +176,14 @@ export default function DashboardPage() {
         <section className="card">
           <SectionHead title="Customer requests" action="See all" onAction={() => navigate('/customer-wants')} />
           {wants === null ? <p className="muted">Loading requests...</p> : null}
-          {wants?.length === 0 ? (
-            <EmptyState title="No requests yet" text="Requests from your storefront will appear here." />
+          {wantError ? <p className="muted">{wantError}</p> : null}
+          {!wantError && wants?.length === 0 ? (
+            <EmptyState
+              title="No open requests"
+              text="New and in-progress requests from your storefront will appear here."
+            />
           ) : null}
-          {wants?.length > 0 ? (
+          {!wantError && wants?.length > 0 ? (
             <div className="attention-list">
               {wants.map((want) => (
                 <button key={want.id} type="button" className="attention-row" onClick={() => navigate(`/customer-wants/${want.id}`)}>
@@ -142,7 +200,29 @@ export default function DashboardPage() {
       <div className="bottom-grid">
         <section className="card">
           <SectionHead title="Low stock" action="Manage products" onAction={() => navigate('/products')} />
-          <EmptyState title="No products yet" text="Stock warnings will show up after you add products." />
+          {lowStock === null ? <p className="muted">Loading products...</p> : null}
+          {lowStockError ? <p className="muted">{lowStockError}</p> : null}
+          {!lowStockError && lowStock?.length === 0 ? (
+            <EmptyState title="No low-stock products" text="Products with 2 or fewer left in stock will show up here." />
+          ) : null}
+          {!lowStockError && lowStock?.length > 0 ? (
+            <div className="attention-list">
+              {lowStock.map((product) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  className="attention-row"
+                  onClick={() => navigate('/products')}
+                >
+                  <strong>{product.name}</strong>
+                  <span>{stockLabel(product.stockQuantity)}</span>
+                  <Badge tone={Number(product.stockQuantity) === 0 ? 'neutral' : 'yellow'}>
+                    {Number(product.stockQuantity) === 0 ? 'Out of stock' : 'Low'}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
         <section className="card quick-card">
           <SectionHead title="Quick actions" />

@@ -57,7 +57,6 @@ export default function DashboardLayout() {
         user={user}
         open={mobileNav}
         onNavigate={() => setMobileNav(false)}
-        onNotify={notify}
         onLogout={handleLogout}
       />
       <main className="main">

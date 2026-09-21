@@ -1,23 +1,10 @@
 const { body, param, query } = require('express-validator');
 const mongoose = require('mongoose');
 const { STATUSES, PAYMENT_STATUSES, DELIVERY_METHODS } = require('../utils/orderStatus');
+const { PAYMENT_METHODS } = require('../utils/paymentMethods');
 
 function isObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
-}
-
-function checkMoney(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    throw new Error('Please enter a valid delivery fee.');
-  }
-  if (number < 0) {
-    throw new Error('Delivery fee cannot be negative.');
-  }
-  if (number > 10000000) {
-    throw new Error('That delivery fee is too high.');
-  }
-  return true;
 }
 
 const idRule = param('id')
@@ -77,14 +64,11 @@ const createRules = [
     }
     return true;
   }),
-  body('deliveryFee').custom((value, { req }) => {
-    if (req.body.deliveryMethod !== 'Delivery') {
-      if (value === undefined || value === null || value === '' || Number(value) === 0) return true;
-      throw new Error('Pickup orders do not include a delivery fee.');
-    }
-    if (value === undefined || value === null || value === '') return true;
-    return checkMoney(value);
-  }),
+  body('paymentMethod')
+    .optional({ values: 'falsy' })
+    .isIn(PAYMENT_METHODS)
+    .withMessage('Please choose a valid payment method.'),
+  // deliveryFee from the client is ignored. The server applies Business.deliveryFee.
   body('notes')
     .optional({ values: 'falsy' })
     .trim()
@@ -101,7 +85,12 @@ const updateRules = [
   body('paymentStatus')
     .optional()
     .isIn(PAYMENT_STATUSES)
-    .withMessage('Payment can only be Pending or Paid.'),
+    .withMessage('Please choose a valid payment status.'),
+  body('paymentRejectionNote')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ max: 300 })
+    .withMessage('Rejection note must be 300 characters or fewer.'),
   body().custom((value) => {
     if (!value || (value.status === undefined && value.paymentStatus === undefined)) {
       throw new Error('Please change the order status or payment status.');

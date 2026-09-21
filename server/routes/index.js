@@ -10,6 +10,7 @@ const customerWantRoutes = require('./customerWantRoutes');
 const billingRoutes = require('./billingRoutes');
 const marketingRoutes = require('./marketingRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
+const notificationRoutes = require('./notificationRoutes');
 
 const router = express.Router();
 
@@ -30,6 +31,7 @@ router.use('/customer-wants', customerWantRoutes);
 router.use('/billing', billingRoutes);
 router.use('/marketing', marketingRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/notifications', notificationRoutes);
 router.use('/store', storeRoutes);
 
 module.exports = router;

@@ -53,4 +53,32 @@ const loginRules = [
   body('password').isString().notEmpty().withMessage('Please enter your password.'),
 ];
 
-module.exports = { registerRules, loginRules };
+const forgotPasswordRules = [emailRule];
+
+const resetPasswordRules = [
+  body('token')
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('Invalid or expired reset link.')
+    .isLength({ min: 32, max: 200 })
+    .withMessage('Invalid or expired reset link.'),
+  passwordRule,
+  body('confirmPassword')
+    .isString()
+    .notEmpty()
+    .withMessage('Please confirm your password.')
+    .custom((value, { req }) => {
+      if (value !== req.body.password) {
+        throw new Error('Passwords do not match.');
+      }
+      return true;
+    }),
+];
+
+module.exports = {
+  registerRules,
+  loginRules,
+  forgotPasswordRules,
+  resetPasswordRules,
+};

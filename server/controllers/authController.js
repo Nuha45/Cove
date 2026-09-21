@@ -45,4 +45,25 @@ const me = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { register, login, logout, me };
+const forgotPassword = asyncHandler(async (req, res) => {
+  const result = await authService.requestPasswordReset(req.body.email);
+  res.json(result);
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const result = await authService.resetPassword({
+    token: req.body.token,
+    password: req.body.password,
+  });
+  clearAuthCookie(res);
+  res.json(result);
+});
+
+module.exports = {
+  register,
+  login,
+  logout,
+  me,
+  forgotPassword,
+  resetPassword,
+};
