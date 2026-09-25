@@ -6,10 +6,13 @@ import { getStorefront } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
+import { appearanceFromBusiness } from '../../utils/storefrontAppearance';
 
 export default function StoreHomePage() {
   const { slug } = useParams();
   const { business } = useOutletContext();
+  const appearance = appearanceFromBusiness(business);
+  const coverUrl = appearance.coverImage ? mediaUrl(appearance.coverImage) : '';
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [search, setSearch] = useState('');
@@ -54,6 +57,7 @@ export default function StoreHomePage() {
   const emptyBecauseFilter = state === 'ready' && products.length === 0 && (query || category);
   const metaBits = [];
   if (business.phone) metaBits.push(business.phone);
+  if (business.pickupEnabled) metaBits.push('Pickup available');
   if (business.deliveryEnabled) {
     metaBits.push(
       Number(business.deliveryFee) > 0
@@ -61,25 +65,24 @@ export default function StoreHomePage() {
         : 'Delivery available'
     );
   }
-  if (business.pickupEnabled) metaBits.push('Pickup available');
 
   return (
     <>
-      <section className="store-hero">
+      <section
+        className={`store-hero${coverUrl ? ' has-cover' : ''}`}
+        style={coverUrl ? { '--store-cover': `url("${coverUrl}")` } : undefined}
+      >
         <p className="eyebrow">{business.category || 'SHOP'}</p>
         <h1>{business.name}</h1>
         <p className="store-hero-lead">
           {business.description || 'Browse the collection and place your order here.'}
         </p>
         {metaBits.length ? (
-          <p className="store-hero-meta-line">
-            {metaBits.map((bit, index) => (
-              <span key={bit}>
-                {index > 0 ? <span className="store-meta-dot" aria-hidden="true">·</span> : null}
-                {bit}
-              </span>
+          <div className="store-hero-meta">
+            {metaBits.map((bit) => (
+              <small key={bit}>{bit}</small>
             ))}
-          </p>
+          </div>
         ) : null}
       </section>
 
@@ -88,7 +91,10 @@ export default function StoreHomePage() {
           <strong>Looking for something specific?</strong>
           <p>Tell {business.name} what you need — they will see your request in one place.</p>
         </div>
-        <Link className="primary" to={`/store/${slug}/want`}>Request something</Link>
+        <div className="store-want-cta-actions">
+          <Link className="primary" to={`/store/${slug}/want`}>Request something</Link>
+          <Link className="secondary" to={`/store/${slug}/want-board`}>What should we stock next?</Link>
+        </div>
       </aside>
 
       <section className="store-catalog">

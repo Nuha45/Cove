@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ExternalLink } from 'lucide-react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
@@ -440,7 +440,16 @@ export default function SettingsPage() {
                 </select>
                 {errors.currency ? <span className="field-error">{errors.currency}</span> : null}
               </label>
-              <p className="muted wide">Prices on your storefront use this currency for display. Order totals are still calculated from product prices and delivery fee.</p>
+              <p className="muted wide">
+                Prices on your storefront use this currency for display. Order totals are still calculated from product prices and delivery fee.
+              </p>
+              <div className="wide storefront-customize-entry">
+                <strong>Customize storefront</strong>
+                <p className="muted">Choose a theme, accent color, and optional cover image for your public shop.</p>
+                <Link className="secondary" to="/storefront#customize">
+                  Open customize storefront
+                </Link>
+              </div>
             </div>
           ) : null}
 

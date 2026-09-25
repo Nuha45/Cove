@@ -6,7 +6,12 @@ import Badge from '../components/ui/Badge';
 import { getCustomerWant, updateCustomerWant } from '../services/customerWantService';
 import { formatOrderDate } from '../utils/display';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
-import { WANT_STATUSES, WANT_STATUS_TONE } from '../utils/customerWants';
+import {
+  WANT_STATUSES,
+  WANT_STATUS_TONE,
+  boardVisibilityLabel,
+  boardVisibilityTone,
+} from '../utils/customerWants';
 
 export default function CustomerWantDetailPage() {
   const { id } = useParams();
@@ -14,10 +19,14 @@ export default function CustomerWantDetailPage() {
   const [want, setWant] = useState(null);
   const [status, setStatus] = useState('');
   const [sellerNotes, setSellerNotes] = useState('');
+  const [boardApproved, setBoardApproved] = useState(false);
+  const [publicRequestText, setPublicRequestText] = useState('');
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [boardSaving, setBoardSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [boardError, setBoardError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
@@ -32,6 +41,8 @@ export default function CustomerWantDetailPage() {
         setWant(result.want);
         setStatus(result.want.status);
         setSellerNotes(result.want.sellerNotes || '');
+        setBoardApproved(Boolean(result.want.boardApproved));
+        setPublicRequestText(result.want.publicRequestText || result.want.request || '');
         setLoadState('ready');
       } catch (err) {
         if (cancelled) return;
@@ -56,15 +67,57 @@ export default function CustomerWantDetailPage() {
         status,
         sellerNotes,
       });
-      setWant(result.want);
-      setStatus(result.want.status);
-      setSellerNotes(result.want.sellerNotes || '');
+      applyWant(result.want);
       notify('Request updated.');
     } catch (err) {
       setSaveError(getErrorMessage(err));
       setFieldErrors(getFieldErrors(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  function applyWant(next) {
+    setWant(next);
+    setStatus(next.status);
+    setSellerNotes(next.sellerNotes || '');
+    setBoardApproved(Boolean(next.boardApproved));
+    setPublicRequestText(next.publicRequestText || next.request || '');
+  }
+
+  async function saveBoard(event) {
+    event.preventDefault();
+    if (!want.shareOnBoardOptIn) return;
+
+    setBoardSaving(true);
+    setBoardError('');
+    setFieldErrors({});
+    try {
+      const result = await updateCustomerWant(want.id, {
+        boardApproved,
+        publicRequestText: publicRequestText.trim(),
+      });
+      applyWant(result.want);
+      notify(result.want.boardApproved ? 'Request published to the board.' : 'Request unpublished from the board.');
+    } catch (err) {
+      setBoardError(getErrorMessage(err));
+      setFieldErrors(getFieldErrors(err));
+    } finally {
+      setBoardSaving(false);
+    }
+  }
+
+  async function unpublish() {
+    setBoardSaving(true);
+    setBoardError('');
+    try {
+      const result = await updateCustomerWant(want.id, { boardApproved: false });
+      applyWant(result.want);
+      notify('Request unpublished from the board.');
+    } catch (err) {
+      setBoardError(getErrorMessage(err));
+    } finally {
+      setBoardSaving(false);
     }
   }
 
@@ -117,6 +170,16 @@ export default function CustomerWantDetailPage() {
                     <dt>Quantity</dt>
                     <dd>{want.quantity || '—'}</dd>
                   </div>
+                  <div>
+                    <dt>Votes</dt>
+                    <dd>{want.voteCount || 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Board</dt>
+                    <dd>
+                      <Badge tone={boardVisibilityTone(want)}>{boardVisibilityLabel(want)}</Badge>
+                    </dd>
+                  </div>
                   <div className="wide">
                     <dt>Customer notes</dt>
                     <dd>{want.notes || 'No notes'}</dd>
@@ -126,6 +189,69 @@ export default function CustomerWantDetailPage() {
                     <dd><Badge tone={WANT_STATUS_TONE[want.status] || 'neutral'}>{want.status}</Badge></dd>
                   </div>
                 </dl>
+              </section>
+
+              <section className="card detail-card">
+                <h2>Request board</h2>
+                <p className="muted">
+                  Board visibility is separate from New / In Progress / Fulfilled / Closed.
+                  Only approved, opted-in requests appear anonymously on your public store.
+                </p>
+
+                {!want.shareOnBoardOptIn ? (
+                  <div className="want-board-locked">
+                    <Badge tone="neutral">Not publishable</Badge>
+                    <p>
+                      This customer did not opt in to share anonymously on the request board.
+                      You cannot publish it.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={saveBoard}>
+                    {boardError ? <p className="form-error">{boardError}</p> : null}
+                    <label className="settings-toggle want-board-toggle">
+                      <span>
+                        <strong>Show on public request board</strong>
+                        <small className="muted">Appears without the customer’s name or contact details.</small>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={boardApproved}
+                        onChange={(event) => setBoardApproved(event.target.checked)}
+                      />
+                    </label>
+                    {fieldErrors.boardApproved ? (
+                      <span className="field-error">{fieldErrors.boardApproved}</span>
+                    ) : null}
+                    <label style={{ marginTop: 12, display: 'block' }}>
+                      Public request text
+                      <textarea
+                        value={publicRequestText}
+                        onChange={(event) => setPublicRequestText(event.target.value)}
+                        maxLength={500}
+                        rows={4}
+                        placeholder="What shoppers will see on the board"
+                      />
+                      {fieldErrors.publicRequestText ? (
+                        <span className="field-error">{fieldErrors.publicRequestText}</span>
+                      ) : null}
+                    </label>
+                    <p className="muted">
+                      {want.voteCount || 0} {(want.voteCount || 0) === 1 ? 'vote' : 'votes'} so far.
+                      Voting is interest only — not an order.
+                    </p>
+                    <div className="want-board-actions">
+                      <button className="primary" type="submit" disabled={boardSaving}>
+                        {boardSaving ? 'Saving…' : boardApproved ? 'Save & publish' : 'Save board settings'}
+                      </button>
+                      {want.boardApproved ? (
+                        <button className="secondary" type="button" disabled={boardSaving} onClick={unpublish}>
+                          Unpublish
+                        </button>
+                      ) : null}
+                    </div>
+                  </form>
+                )}
               </section>
             </div>
 

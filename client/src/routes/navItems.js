@@ -70,7 +70,7 @@ export const navItems = [
     label: 'Storefront',
     to: '/storefront',
     icon: Store,
-    subtitle: 'This is the shop your customers will see.',
+    subtitle: 'Share your link and customize how customers see your shop.',
   },
   {
     label: 'Billing',

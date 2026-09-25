@@ -78,10 +78,35 @@ const createWant = asyncHandler(async (req, res) => {
     request: req.body.request,
     quantity: req.body.quantity,
     notes: req.body.notes,
+    shareOnBoardOptIn: req.body.shareOnBoardOptIn,
   });
 
   res.status(201).json({
     message: 'Request received. Thank you — the shop will review it.',
+  });
+});
+
+const listWantBoard = asyncHandler(async (req, res) => {
+  const result = await customerWantService.listBoard(req.params.slug, {
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+
+  res.json({
+    shopName: result.business.name,
+    wants: result.wants.map((want) => want.toBoardPublic()),
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+    totalPages: result.totalPages,
+  });
+});
+
+const voteWantBoard = asyncHandler(async (req, res) => {
+  const want = await customerWantService.voteOnBoard(req.params.slug, req.params.wantId, req);
+  res.status(201).json({
+    message: 'Thanks — your interest was recorded. This is not an order.',
+    want: want.toBoardPublic(),
   });
 });
 
@@ -92,4 +117,6 @@ module.exports = {
   getOrderConfirmation,
   submitPaymentReference,
   createWant,
+  listWantBoard,
+  voteWantBoard,
 };

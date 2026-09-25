@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 const { CATEGORIES } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
 const { normalizeUpiId } = require('../utils/upi');
+const {
+  STOREFRONT_THEMES,
+  DEFAULT_STOREFRONT_THEME,
+  DEFAULT_STOREFRONT_ACCENT,
+  publicAppearance,
+} = require('../utils/storefrontAppearance');
 
 const businessSchema = new mongoose.Schema(
   {
@@ -83,6 +89,24 @@ const businessSchema = new mongoose.Schema(
     storefrontActive: {
       type: Boolean,
       default: true,
+    },
+    // Curated storefront appearance. Advanced customization can extend these later.
+    storefrontTheme: {
+      type: String,
+      enum: STOREFRONT_THEMES,
+      default: DEFAULT_STOREFRONT_THEME,
+    },
+    storefrontAccent: {
+      type: String,
+      trim: true,
+      maxlength: 7,
+      default: DEFAULT_STOREFRONT_ACCENT,
+    },
+    storefrontCoverImage: {
+      type: String,
+      trim: true,
+      maxlength: 260,
+      default: '',
     },
     // Seller-controlled customer payment methods. Cove never collects these funds.
     paymentQrEnabled: {
@@ -185,6 +209,7 @@ function publicPayments(doc) {
 }
 
 businessSchema.methods.toPublic = function toPublic() {
+  const appearance = publicAppearance(this);
   return {
     id: this._id.toString(),
     name: this.name,
@@ -200,6 +225,10 @@ businessSchema.methods.toPublic = function toPublic() {
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
     storefrontActive: this.storefrontActive !== false,
+    storefrontTheme: appearance.theme,
+    storefrontAccent: appearance.accent,
+    storefrontCoverImage: appearance.coverImage,
+    appearance,
     ...paymentSettings(this),
   };
 };
@@ -224,6 +253,7 @@ businessSchema.methods.toStorefront = function toStorefront() {
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
     storefrontActive: this.storefrontActive !== false,
+    appearance: publicAppearance(this),
     payments: publicPayments(this),
   };
 };

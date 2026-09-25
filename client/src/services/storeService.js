@@ -25,3 +25,11 @@ export function submitStorePaymentReference(slug, token, input) {
 export function createStoreWant(slug, input) {
   return api.post(`/store/${slug}/wants`, input).then((res) => res.data);
 }
+
+export function getWantBoard(slug, params) {
+  return api.get(`/store/${slug}/want-board`, { params }).then((res) => res.data);
+}
+
+export function voteWantBoard(slug, wantId) {
+  return api.post(`/store/${slug}/want-board/${wantId}/votes`).then((res) => res.data);
+}

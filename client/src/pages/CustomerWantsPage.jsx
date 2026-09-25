@@ -7,7 +7,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { listCustomerWants } from '../services/customerWantService';
 import { formatEyebrowDate, formatOrderDate } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
-import { WANT_STATUSES, WANT_STATUS_TONE } from '../utils/customerWants';
+import { WANT_STATUSES, WANT_STATUS_TONE, boardVisibilityLabel, boardVisibilityTone } from '../utils/customerWants';
 
 export default function CustomerWantsPage() {
   const [wants, setWants] = useState([]);
@@ -133,7 +133,9 @@ export default function CustomerWantsPage() {
                 <span>Request</span>
                 <span>Customer</span>
                 <span className="col-qty">Qty</span>
+                <span className="col-votes">Votes</span>
                 <span className="col-status">Status</span>
+                <span className="col-board">Board</span>
                 <span className="col-date">Date</span>
                 <span className="col-action" aria-hidden="true" />
               </div>
@@ -152,8 +154,12 @@ export default function CustomerWantsPage() {
                     </div>
                   </div>
                   <span className="col-qty">{want.quantity || '—'}</span>
+                  <span className="col-votes">{want.voteCount || 0}</span>
                   <span className="col-status">
                     <Badge tone={WANT_STATUS_TONE[want.status] || 'neutral'}>{want.status}</Badge>
+                  </span>
+                  <span className="col-board">
+                    <Badge tone={boardVisibilityTone(want)}>{boardVisibilityLabel(want)}</Badge>
                   </span>
                   <span className="col-date">{formatOrderDate(want.createdAt)}</span>
                   <span className="col-action">
@@ -173,8 +179,10 @@ export default function CustomerWantsPage() {
                   <small>{want.name} · {want.phone || 'No phone'}</small>
                   <div className="want-card-meta">
                     <span>{want.quantity ? `Qty ${want.quantity}` : 'No quantity'}</span>
+                    <span>{want.voteCount || 0} {(want.voteCount || 0) === 1 ? 'vote' : 'votes'}</span>
                     <span>{formatOrderDate(want.createdAt)}</span>
                   </div>
+                  <Badge tone={boardVisibilityTone(want)}>{boardVisibilityLabel(want)}</Badge>
                   <Link className="secondary" to={`/customer-wants/${want.id}`}>View request</Link>
                 </article>
               ))}

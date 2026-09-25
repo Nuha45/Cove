@@ -17,6 +17,10 @@ const idRule = param('id')
   .custom(isObjectId)
   .withMessage('That request link is not valid.');
 
+const wantIdRule = param('wantId')
+  .custom(isObjectId)
+  .withMessage('That request link is not valid.');
+
 const publicCreateRules = [
   slugRule,
   body('name')
@@ -53,6 +57,13 @@ const publicCreateRules = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Notes must be 500 characters or fewer.'),
+  body('shareOnBoardOptIn')
+    .optional()
+    .custom((value) => {
+      if (typeof value === 'boolean') return true;
+      if (value === 'true' || value === 'false') return true;
+      throw new Error('Board sharing preference is not valid.');
+    }),
 ];
 
 const listRules = [
@@ -63,6 +74,17 @@ const listRules = [
     .withMessage('That status filter is not valid.'),
   query('page').optional().isInt({ min: 1, max: 10000 }).withMessage('That page is not valid.'),
   query('limit').optional().isInt({ min: 1, max: 24 }).withMessage('Please request between 1 and 24 items.'),
+];
+
+const boardListRules = [
+  slugRule,
+  query('page').optional().isInt({ min: 1, max: 10000 }).withMessage('That page is not valid.'),
+  query('limit').optional().isInt({ min: 1, max: 48 }).withMessage('Please request between 1 and 48 items.'),
+];
+
+const boardVoteRules = [
+  slugRule,
+  wantIdRule,
 ];
 
 const updateRules = [
@@ -76,9 +98,25 @@ const updateRules = [
     .trim()
     .isLength({ max: 500 })
     .withMessage('Notes must be 500 characters or fewer.'),
+  body('boardApproved')
+    .optional()
+    .custom((value) => {
+      if (typeof value === 'boolean') return true;
+      if (value === 'true' || value === 'false') return true;
+      throw new Error('Board visibility setting is not valid.');
+    }),
+  body('publicRequestText')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('Public request text must be 500 characters or fewer.'),
   body().custom((value) => {
-    if (!value || (value.status === undefined && value.sellerNotes === undefined)) {
-      throw new Error('Please change the status or notes.');
+    if (!value || typeof value !== 'object') {
+      throw new Error('Please change the status, notes, or board settings.');
+    }
+    const keys = ['status', 'sellerNotes', 'boardApproved', 'publicRequestText'];
+    if (!keys.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {
+      throw new Error('Please change the status, notes, or board settings.');
     }
     return true;
   }),
@@ -90,4 +128,7 @@ module.exports = {
   updateRules,
   idRule,
   slugRule,
+  boardListRules,
+  boardVoteRules,
+  wantIdRule,
 };

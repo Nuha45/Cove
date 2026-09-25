@@ -2,6 +2,8 @@ const Business = require('../models/Business');
 const ApiError = require('../utils/ApiError');
 const { saveLogo } = require('../utils/businessLogo');
 const { savePaymentQr } = require('../utils/paymentQrImage');
+const { saveStorefrontCover } = require('../utils/storefrontCover');
+const { normalizeTheme, normalizeAccent } = require('../utils/storefrontAppearance');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 
 function asBoolean(value, fallback) {
@@ -66,6 +68,19 @@ async function updateSettings(businessId, input) {
   }
   if (Object.prototype.hasOwnProperty.call(input, 'storefrontActive')) {
     business.storefrontActive = asBoolean(input.storefrontActive, business.storefrontActive);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontTheme')) {
+    business.storefrontTheme = normalizeTheme(input.storefrontTheme);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontAccent')) {
+    business.storefrontAccent = normalizeAccent(input.storefrontAccent);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontCoverImage')) {
+    business.storefrontCoverImage = await saveStorefrontCover(
+      businessId,
+      input.storefrontCoverImage,
+      business.storefrontCoverImage || ''
+    );
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentQrEnabled')) {
     business.paymentQrEnabled = asBoolean(input.paymentQrEnabled, business.paymentQrEnabled);

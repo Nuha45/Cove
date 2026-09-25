@@ -25,6 +25,7 @@ const StoreCartPage = lazy(() => import('../pages/store/StoreCartPage'));
 const StoreCheckoutPage = lazy(() => import('../pages/store/StoreCheckoutPage'));
 const StoreConfirmationPage = lazy(() => import('../pages/store/StoreConfirmationPage'));
 const StoreWantPage = lazy(() => import('../pages/store/StoreWantPage'));
+const StoreWantBoardPage = lazy(() => import('../pages/store/StoreWantBoardPage'));
 const CustomersPage = lazy(() => import('../pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('../pages/CustomerDetailPage'));
 const CustomerWantsPage = lazy(() => import('../pages/CustomerWantsPage'));
@@ -62,6 +63,7 @@ export default function AppRoutes() {
         <Route path="checkout" element={<Suspense fallback={<StoreFallback />}><StoreCheckoutPage /></Suspense>} />
         <Route path="order/:orderNumber" element={<Suspense fallback={<StoreFallback />}><StoreConfirmationPage /></Suspense>} />
         <Route path="want" element={<Suspense fallback={<StoreFallback />}><StoreWantPage /></Suspense>} />
+        <Route path="want-board" element={<Suspense fallback={<StoreFallback />}><StoreWantBoardPage /></Suspense>} />
       </Route>
 
       <Route element={<ProtectedRoute />}>

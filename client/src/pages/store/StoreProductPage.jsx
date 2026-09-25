@@ -86,7 +86,7 @@ export default function StoreProductPage() {
               alt={product.name}
             />
           ) : (
-            <span className="store-thumb-fallback large" aria-hidden="true"><Package size={42} /></span>
+            <span className="store-thumb-fallback large" aria-hidden="true"><Package size={32} /></span>
           )}
           {images.length > 1 ? (
             <div className="store-thumbs" role="list">

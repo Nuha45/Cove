@@ -11,6 +11,7 @@ const emptyForm = {
   request: '',
   quantity: '',
   notes: '',
+  shareOnBoardOptIn: false,
 };
 
 export default function StoreWantPage() {
@@ -24,8 +25,11 @@ export default function StoreWantPage() {
   const [done, setDone] = useState(false);
 
   function update(event) {
-    const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
+    const { name, value, type, checked } = event.target;
+    setForm((current) => ({
+      ...current,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
   }
 
   function clientErrors() {
@@ -61,6 +65,7 @@ export default function StoreWantPage() {
         request: form.request.trim(),
         quantity: form.quantity === '' ? undefined : Number(form.quantity),
         notes: form.notes.trim(),
+        shareOnBoardOptIn: Boolean(form.shareOnBoardOptIn),
       });
       setDone(true);
     } catch (err) {
@@ -84,8 +89,14 @@ export default function StoreWantPage() {
           <p>
             They will review it and follow up if they can help.
             This does not guarantee the item will be available.
+            {form.shareOnBoardOptIn
+              ? ' If they approve it, your request may appear anonymously on the shop’s request board.'
+              : ''}
           </p>
-          <Link className="primary" to={`/store/${slug}`}>Continue shopping</Link>
+          <div className="store-want-success-actions">
+            <Link className="primary" to={`/store/${slug}`}>Continue shopping</Link>
+            <Link className="secondary" to={`/store/${slug}/want-board`}>See request board</Link>
+          </div>
         </div>
       </div>
     );
@@ -102,6 +113,10 @@ export default function StoreWantPage() {
         <h1>Can&apos;t find what you&apos;re looking for?</h1>
         <p>
           Tell {shopName} what you need. Keep it short — they will follow up if they can help.
+        </p>
+        <p className="muted">
+          Or browse what other shoppers have asked for on the{' '}
+          <Link to={`/store/${slug}/want-board`}>request board</Link>.
         </p>
       </header>
 
@@ -190,6 +205,24 @@ export default function StoreWantPage() {
               />
               {errors.notes ? <span className="field-error">{errors.notes}</span> : null}
             </label>
+            <label className="wide store-want-opt-in">
+              <input
+                name="shareOnBoardOptIn"
+                type="checkbox"
+                checked={form.shareOnBoardOptIn}
+                onChange={update}
+              />
+              <span>
+                <strong>I’m okay with this request being shown anonymously on this shop’s request board.</strong>
+                <small>
+                  Your name, phone, email, and notes stay private. The shop must still approve it before it appears.
+                  Unchecked by default.
+                </small>
+              </span>
+            </label>
+            {errors.shareOnBoardOptIn ? (
+              <span className="field-error">{errors.shareOnBoardOptIn}</span>
+            ) : null}
           </div>
         </fieldset>
 

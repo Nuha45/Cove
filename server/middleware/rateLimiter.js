@@ -40,6 +40,26 @@ const publicWantLimiter = rateLimit({
   },
 });
 
+const publicWantBoardLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Too many board lookups from this device. Please wait a few minutes and try again.',
+  },
+});
+
+const publicWantVoteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Too many votes from this device. Please wait a few minutes and try again.',
+  },
+});
+
 const publicConfirmationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -84,6 +104,8 @@ module.exports = authLimiter;
 module.exports.writeLimiter = writeLimiter;
 module.exports.publicOrderLimiter = publicOrderLimiter;
 module.exports.publicWantLimiter = publicWantLimiter;
+module.exports.publicWantBoardLimiter = publicWantBoardLimiter;
+module.exports.publicWantVoteLimiter = publicWantVoteLimiter;
 module.exports.publicConfirmationLimiter = publicConfirmationLimiter;
 module.exports.aiLimiter = aiLimiter;
 module.exports.forgotPasswordLimiter = forgotPasswordLimiter;

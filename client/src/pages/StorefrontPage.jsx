@@ -1,26 +1,69 @@
-import { useEffect, useState } from 'react';
-import { Copy, ExternalLink, Package } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Copy, ExternalLink, Monitor, Package, Smartphone } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
 import EmptyState from '../components/ui/EmptyState';
 import { listProducts } from '../services/productService';
-import { formatEyebrowDate, formatPrice } from '../utils/display';
-import { getErrorMessage } from '../utils/errors';
+import { updateBusinessSettings } from '../services/businessService';
+import { formatEyebrowDate, formatPrice, initials } from '../utils/display';
+import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import { mediaUrl } from '../utils/media';
 import { copyText, storefrontPath, storefrontUrl } from '../utils/storefront';
+import {
+  DEFAULT_APPEARANCE,
+  STOREFRONT_ACCENTS,
+  STOREFRONT_THEMES,
+  appearanceFromBusiness,
+  normalizeAppearance,
+} from '../utils/storefrontAppearance';
+
+const COVER_MAX_BYTES = 450 * 1024;
 
 export default function StorefrontPage() {
-  const { business } = useAuth();
+  const { business, refresh } = useAuth();
   const { notify } = useOutletContext();
+  const coverInputId = useId();
+  const coverInputRef = useRef(null);
+
   const [copying, setCopying] = useState(false);
   const [products, setProducts] = useState([]);
   const [previewState, setPreviewState] = useState('loading');
   const [previewError, setPreviewError] = useState('');
+  const [viewport, setViewport] = useState('desktop');
+  const [draft, setDraft] = useState(() => appearanceFromBusiness(business));
+  const [saved, setSaved] = useState(() => appearanceFromBusiness(business));
+  const [coverError, setCoverError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
   const slug = business?.slug || '';
   const url = storefrontUrl(slug);
   const path = storefrontPath(slug);
   const currency = business?.currency || 'INR';
+  const dirty = draft.theme !== saved.theme
+    || draft.accent !== saved.accent
+    || draft.coverImage !== saved.coverImage;
+
+  useEffect(() => {
+    const next = appearanceFromBusiness(business);
+    setDraft(next);
+    setSaved(next);
+  }, [
+    business?.storefrontTheme,
+    business?.storefrontAccent,
+    business?.storefrontCoverImage,
+    business?.appearance?.theme,
+    business?.appearance?.accent,
+    business?.appearance?.coverImage,
+  ]);
+
+  useEffect(() => {
+    if (window.location.hash === '#customize') {
+      document.getElementById('customize')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,12 +102,86 @@ export default function StorefrontPage() {
     }
   }
 
+  function onCoverSelected(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    setCoverError('');
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setCoverError('Please upload a JPG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > COVER_MAX_BYTES) {
+      setCoverError('Please use an image under 450KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((current) => ({ ...current, coverImage: String(reader.result || '') }));
+    };
+    reader.onerror = () => setCoverError('That image could not be read.');
+    reader.readAsDataURL(file);
+  }
+
+  async function saveAppearance() {
+    setSaving(true);
+    setFormError('');
+    setFieldErrors({});
+    setCoverError('');
+    try {
+      const result = await updateBusinessSettings({
+        storefrontTheme: draft.theme,
+        storefrontAccent: draft.accent,
+        storefrontCoverImage: draft.coverImage,
+      });
+      const next = appearanceFromBusiness(result.business);
+      setDraft(next);
+      setSaved(next);
+      await refresh();
+      notify(result.message || 'Storefront look published.');
+    } catch (err) {
+      const nextFields = getFieldErrors(err);
+      setFieldErrors(nextFields);
+      if (nextFields.storefrontCoverImage) setCoverError(nextFields.storefrontCoverImage);
+      setFormError(getErrorMessage(err));
+      notify(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resetAppearance() {
+    const next = normalizeAppearance(DEFAULT_APPEARANCE);
+    setDraft(next);
+    setCoverError('');
+    setFormError('');
+    setFieldErrors({});
+    setSaving(true);
+    try {
+      const result = await updateBusinessSettings({
+        storefrontTheme: next.theme,
+        storefrontAccent: next.accent,
+        storefrontCoverImage: '',
+      });
+      const savedNext = appearanceFromBusiness(result.business);
+      setDraft(savedNext);
+      setSaved(savedNext);
+      await refresh();
+      notify('Storefront reset to the default look.');
+    } catch (err) {
+      setFormError(getErrorMessage(err));
+      notify(getErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Storefront"
-        subtitle="Share this link so customers can browse and order without messaging you for every detail."
+        subtitle="Share your shop link and customize how customers see your store."
         action={
           slug ? (
             <a className="primary" href={path} target="_blank" rel="noreferrer">
@@ -89,78 +206,280 @@ export default function StorefrontPage() {
         </div>
       </section>
 
-      <section className="store-preview card">
-        <div className="store-preview-head">
+      <section className="card storefront-customize" id="customize">
+        <div className="storefront-customize-head">
           <div>
-            <p className="eyebrow">LIVE PREVIEW</p>
-            <h2>{business?.name || 'Your shop'}</h2>
+            <p className="eyebrow">CUSTOMIZE STOREFRONT</p>
+            <h2>Theme, accent, and cover</h2>
             <p className="muted">
-              This shows your real shop name, details, and active products — the same information customers see on your public store.
+              Your logo, shop name, and profile details stay as set in Settings.
+              Choose a curated look, then save to publish it on your public store.
             </p>
           </div>
-          {slug ? (
-            <a className="secondary" href={path} target="_blank" rel="noreferrer">
-              <ExternalLink size={15} /> Open full store
-            </a>
-          ) : null}
+          <div className="storefront-customize-actions">
+            <button className="secondary" type="button" onClick={resetAppearance} disabled={saving}>
+              Reset to default
+            </button>
+            <button className="primary" type="button" onClick={saveAppearance} disabled={saving || !dirty}>
+              {saving ? 'Saving…' : 'Save & publish'}
+            </button>
+          </div>
         </div>
 
-        <div className="store-live-preview">
-          <div className="store-live-preview-hero">
-            <p className="eyebrow">{business?.category || 'SHOP'}</p>
-            <h3>{business?.name || 'Your shop'}</h3>
-            <p>
-              {business?.description
-                || (business?.storefrontActive === false
-                  ? 'Your storefront is currently paused in Settings.'
-                  : 'Add a short shop description in Settings so customers know what you sell.')}
-            </p>
-            <div className="store-live-preview-meta">
-              {business?.pickupEnabled !== false ? <small>Pickup available</small> : null}
-              {business?.deliveryEnabled !== false ? (
-                <small>
-                  Delivery
-                  {Number(business?.deliveryFee) > 0
-                    ? ` from ${formatPrice(business.deliveryFee, currency)}`
-                    : ' available'}
-                </small>
+        {formError ? <p className="form-error" role="alert">{formError}</p> : null}
+
+        <div className="storefront-customize-layout">
+          <div className="storefront-customize-controls">
+            <fieldset className="storefront-theme-fieldset">
+              <legend>Theme</legend>
+              <div className="storefront-theme-grid" role="radiogroup" aria-label="Storefront theme">
+                {STOREFRONT_THEMES.map((theme) => {
+                  const selected = draft.theme === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      className={`storefront-theme-card${selected ? ' selected' : ''}`}
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setDraft((current) => ({ ...current, theme: theme.id }))}
+                    >
+                      <span className={`storefront-theme-swatch theme-${theme.id}`} aria-hidden="true" />
+                      <strong>{theme.label}</strong>
+                      <small>{theme.blurb}</small>
+                    </button>
+                  );
+                })}
+              </div>
+              {fieldErrors.storefrontTheme ? (
+                <span className="field-error">{fieldErrors.storefrontTheme}</span>
               ) : null}
-              {business?.storefrontActive === false ? <small>Storefront paused</small> : null}
+            </fieldset>
+
+            <fieldset className="storefront-accent-fieldset">
+              <legend>Accent color</legend>
+              <div className="storefront-accent-row" role="radiogroup" aria-label="Accent color">
+                {STOREFRONT_ACCENTS.map((accent) => {
+                  const selected = draft.accent.toLowerCase() === accent.value.toLowerCase();
+                  return (
+                    <button
+                      key={accent.id}
+                      type="button"
+                      className={`storefront-accent-swatch${selected ? ' selected' : ''}`}
+                      style={{ '--swatch': accent.value }}
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={accent.label}
+                      title={accent.label}
+                      onClick={() => setDraft((current) => ({ ...current, accent: accent.value }))}
+                    />
+                  );
+                })}
+              </div>
+              {fieldErrors.storefrontAccent ? (
+                <span className="field-error">{fieldErrors.storefrontAccent}</span>
+              ) : null}
+            </fieldset>
+
+            <div className="storefront-cover-field">
+              <div className="storefront-cover-copy">
+                <strong>Cover image</strong>
+                <p className="muted">Optional banner behind your shop intro. JPG, PNG, or WebP under 450KB.</p>
+                {coverError ? <span className="field-error">{coverError}</span> : null}
+              </div>
+              <div className="storefront-cover-preview">
+                {draft.coverImage ? (
+                  <img src={mediaUrl(draft.coverImage)} alt="" />
+                ) : (
+                  <span className="muted">No cover yet</span>
+                )}
+              </div>
+              <div className="logo-actions">
+                <button className="secondary" type="button" onClick={() => coverInputRef.current?.click()}>
+                  {draft.coverImage ? 'Replace cover' : 'Upload cover'}
+                </button>
+                {draft.coverImage ? (
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => setDraft((current) => ({ ...current, coverImage: '' }))}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+                <input
+                  id={coverInputId}
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="product-file-input"
+                  hidden
+                  onChange={onCoverSelected}
+                />
+              </div>
             </div>
           </div>
 
-          {previewState === 'loading' ? <p className="muted">Loading your products...</p> : null}
-          {previewState === 'error' ? <p className="form-error">{previewError}</p> : null}
-
-          {previewState === 'ready' && products.length === 0 ? (
-            <div className="store-live-preview-empty">
-              <EmptyState
-                title="No active products yet"
-                text="Add an active product to see it here. Customers will see the same empty shop until you do."
-              />
-              <Link className="secondary" to="/products">Go to Products</Link>
-            </div>
-          ) : null}
-
-          {previewState === 'ready' && products.length > 0 ? (
-            <>
-              <h4>Active products</h4>
-              <div className="store-live-preview-grid">
-                {products.map((product) => (
-                  <div className="store-live-preview-card" key={product.id}>
-                    <PreviewThumb product={product} />
-                    <strong>{product.name}</strong>
-                    <span>{formatPrice(product.price, currency)}</span>
-                    <small>{product.stockQuantity > 0 ? `${product.stockQuantity} in stock` : 'Out of stock'}</small>
-                  </div>
-                ))}
+          <div className="storefront-preview-pane">
+            <div className="storefront-preview-toolbar">
+              <p className="eyebrow">LIVE PREVIEW</p>
+              <div className="storefront-viewport-toggle" role="group" aria-label="Preview size">
+                <button
+                  type="button"
+                  className={viewport === 'desktop' ? 'selected' : ''}
+                  aria-pressed={viewport === 'desktop'}
+                  onClick={() => setViewport('desktop')}
+                >
+                  <Monitor size={15} /> Desktop
+                </button>
+                <button
+                  type="button"
+                  className={viewport === 'mobile' ? 'selected' : ''}
+                  aria-pressed={viewport === 'mobile'}
+                  onClick={() => setViewport('mobile')}
+                >
+                  <Smartphone size={15} /> Mobile
+                </button>
               </div>
-              <p className="muted">Showing up to 6 active products. Open the full store to browse everything.</p>
-            </>
-          ) : null}
+            </div>
+
+            <StoreAppearancePreview
+              business={business}
+              appearance={draft}
+              products={products}
+              currency={currency}
+              viewport={viewport}
+              previewState={previewState}
+              previewError={previewError}
+            />
+          </div>
         </div>
       </section>
     </>
+  );
+}
+
+function StoreAppearancePreview({
+  business,
+  appearance,
+  products,
+  currency,
+  viewport,
+  previewState,
+  previewError,
+}) {
+  const shopName = business?.name || 'Your shop';
+  const coverUrl = appearance.coverImage ? mediaUrl(appearance.coverImage) : '';
+  const metaBits = [];
+  if (business?.pickupEnabled !== false) metaBits.push('Pickup available');
+  if (business?.deliveryEnabled !== false) {
+    metaBits.push(
+      Number(business?.deliveryFee) > 0
+        ? `Delivery from ${formatPrice(business.deliveryFee, currency)}`
+        : 'Delivery available'
+    );
+  }
+  if (business?.storefrontActive === false) metaBits.push('Storefront paused');
+
+  return (
+    <div
+      className={`store-appear-preview viewport-${viewport}`}
+      data-theme={appearance.theme}
+      style={{ '--store-accent': appearance.accent }}
+    >
+      <header className="store-top">
+        <div className="store-top-inner">
+          <div className="store-brand">
+            {business?.logo ? (
+              <img className="store-mark-img" src={mediaUrl(business.logo)} alt="" />
+            ) : (
+              <span className="store-mark" aria-hidden="true">{initials(shopName, 1)}</span>
+            )}
+            <div>
+              <strong>{shopName}</strong>
+              {business?.city ? <small>{business.city}</small> : null}
+            </div>
+          </div>
+          <span className="store-cart-link" aria-hidden="true">
+            <Package size={16} />
+            <span>Cart</span>
+            <em>2</em>
+          </span>
+        </div>
+      </header>
+
+      <div className="store-main">
+        <section
+          className={`store-hero${coverUrl ? ' has-cover' : ''}`}
+          style={coverUrl ? { '--store-cover': `url("${coverUrl}")` } : undefined}
+        >
+          <p className="eyebrow">{business?.category || 'SHOP'}</p>
+          <h1>{shopName}</h1>
+          <p className="store-hero-lead">
+            {business?.description
+              || (business?.storefrontActive === false
+                ? 'Your storefront is currently paused in Settings.'
+                : 'Add a short shop description in Settings so customers know what you sell.')}
+          </p>
+          {metaBits.length ? (
+            <div className="store-hero-meta">
+              {metaBits.map((bit) => (
+                <small key={bit}>{bit}</small>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <aside className="store-want-cta">
+          <div className="store-want-cta-copy">
+            <strong>Looking for something specific?</strong>
+            <p>Tell {shopName} what you need — they will see your request in one place.</p>
+          </div>
+          <span className="primary" aria-hidden="true">Request something</span>
+        </aside>
+
+        {previewState === 'loading' ? <p className="muted store-panel">Loading your products...</p> : null}
+        {previewState === 'error' ? <p className="form-error store-panel">{previewError}</p> : null}
+
+        {previewState === 'ready' && products.length === 0 ? (
+          <div className="store-panel store-live-preview-empty">
+            <EmptyState
+              title="No active products yet"
+              text="Add an active product to see it here. Customers will see the same empty shop until you do."
+            />
+            <Link className="secondary" to="/products">Go to Products</Link>
+          </div>
+        ) : null}
+
+        {previewState === 'ready' && products.length > 0 ? (
+          <section className="store-catalog">
+            <div className="store-catalog-head">
+              <div>
+                <h2>Collection</h2>
+                <p className="muted">{Math.min(products.length, 6)} pieces</p>
+              </div>
+            </div>
+            <div className="store-grid">
+              {products.slice(0, 6).map((product) => (
+                <div className="store-product-card" key={product.id}>
+                  <PreviewThumb product={product} />
+                  <div className="store-product-copy">
+                    {product.category ? <span className="store-product-category">{product.category}</span> : null}
+                    <strong>{product.name}</strong>
+                    <div className="store-product-meta">
+                      <span className="store-product-price">{formatPrice(product.price, currency)}</span>
+                      <small className={product.stockQuantity > 0 ? 'in-stock' : 'out-stock'}>
+                        {product.stockQuantity > 0 ? `${product.stockQuantity} in stock` : 'Out of stock'}
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -168,7 +487,7 @@ function PreviewThumb({ product }) {
   const src = product.images?.[0];
   if (!src) {
     return (
-      <span className="store-live-preview-fallback" aria-hidden="true">
+      <span className="store-thumb-fallback" aria-hidden="true">
         <Package size={22} />
       </span>
     );

@@ -4,14 +4,20 @@ import CoveLogo from '../../components/brand/CoveLogo';
 import { CartProvider, useCart } from '../../context/CartContext';
 import { initials } from '../../utils/display';
 import { mediaUrl } from '../../utils/media';
+import { appearanceFromBusiness } from '../../utils/storefrontAppearance';
 
 function StoreChrome({ business }) {
   const { slug } = useParams();
   const { count } = useCart();
   const shopName = business?.name || 'Shop';
+  const appearance = appearanceFromBusiness(business);
 
   return (
-    <div className="public-store">
+    <div
+      className="public-store"
+      data-theme={appearance.theme}
+      style={{ '--store-accent': appearance.accent }}
+    >
       <header className="store-top">
         <div className="store-top-inner">
           <Link className="store-brand" to={`/store/${slug}`}>

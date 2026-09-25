@@ -3,6 +3,8 @@ const {
   publicOrderLimiter,
   publicWantLimiter,
   publicConfirmationLimiter,
+  publicWantBoardLimiter,
+  publicWantVoteLimiter,
 } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const {
@@ -12,7 +14,11 @@ const {
   confirmationRules,
   paymentReferenceRules,
 } = require('../validators/storeValidator');
-const { publicCreateRules } = require('../validators/customerWantValidator');
+const {
+  publicCreateRules,
+  boardListRules,
+  boardVoteRules,
+} = require('../validators/customerWantValidator');
 const storeController = require('../controllers/storeController');
 
 const router = express.Router();
@@ -35,5 +41,19 @@ router.post(
 );
 router.post('/:slug/orders', publicOrderLimiter, checkoutRules, validate, storeController.createOrder);
 router.post('/:slug/wants', publicWantLimiter, publicCreateRules, validate, storeController.createWant);
+router.get(
+  '/:slug/want-board',
+  publicWantBoardLimiter,
+  boardListRules,
+  validate,
+  storeController.listWantBoard
+);
+router.post(
+  '/:slug/want-board/:wantId/votes',
+  publicWantVoteLimiter,
+  boardVoteRules,
+  validate,
+  storeController.voteWantBoard
+);
 
 module.exports = router;

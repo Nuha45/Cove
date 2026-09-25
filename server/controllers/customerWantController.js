@@ -31,6 +31,12 @@ const update = asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, 'sellerNotes')) {
     input.sellerNotes = req.body.sellerNotes;
   }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'boardApproved')) {
+    input.boardApproved = req.body.boardApproved;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'publicRequestText')) {
+    input.publicRequestText = req.body.publicRequestText;
+  }
   const want = await customerWantService.update(req.businessId, req.params.id, input);
   res.json({ want: want.toPublic() });
 });

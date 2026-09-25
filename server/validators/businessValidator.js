@@ -2,6 +2,12 @@ const { body } = require('express-validator');
 const { CATEGORIES } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
+const {
+  STOREFRONT_THEMES,
+  STOREFRONT_ACCENTS,
+} = require('../utils/storefrontAppearance');
+
+const ACCENT_VALUES = STOREFRONT_ACCENTS.map((item) => item.value.toLowerCase());
 
 function optionalBoolean(field, message) {
   return body(field)
@@ -84,6 +90,29 @@ const updateSettingsRules = [
   optionalBoolean('pickupEnabled', 'Pickup setting is not valid.'),
   optionalBoolean('deliveryEnabled', 'Delivery setting is not valid.'),
   optionalBoolean('storefrontActive', 'Storefront setting is not valid.'),
+  body('storefrontTheme')
+    .optional()
+    .trim()
+    .toLowerCase()
+    .isIn(STOREFRONT_THEMES)
+    .withMessage('Please choose a valid storefront theme.'),
+  body('storefrontAccent')
+    .optional()
+    .trim()
+    .custom((value) => {
+      if (!/^#[0-9A-Fa-f]{6}$/.test(value) || !ACCENT_VALUES.includes(value.toLowerCase())) {
+        throw new Error('Please choose one of the available accent colors.');
+      }
+      return true;
+    }),
+  body('storefrontCoverImage')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === null || value === '') return true;
+      if (typeof value !== 'string') throw new Error('Please upload a JPG, PNG, or WebP image.');
+      if (value.startsWith('data:image/') || value.startsWith('/uploads/covers/')) return true;
+      throw new Error('Please upload a JPG, PNG, or WebP image.');
+    }),
   optionalBoolean('paymentQrEnabled', 'QR payment setting is not valid.'),
   optionalBoolean('paymentLinkEnabled', 'Payment link setting is not valid.'),
   optionalBoolean('paymentInstructionsEnabled', 'Payment instructions setting is not valid.'),
@@ -153,6 +182,7 @@ const updateSettingsRules = [
     const allowed = [
       'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
       'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
+      'storefrontTheme', 'storefrontAccent', 'storefrontCoverImage',
       ...PAYMENT_FIELDS,
     ];
     if (!allowed.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {

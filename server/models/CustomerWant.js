@@ -73,6 +73,32 @@ const customerWantSchema = new mongoose.Schema(
       enum: STATUSES,
       default: 'New',
     },
+    // Explicit customer opt-in for anonymous board sharing. Never default true.
+    shareOnBoardOptIn: {
+      type: Boolean,
+      default: false,
+    },
+    // Seller-controlled board visibility — independent of workflow status.
+    boardApproved: {
+      type: Boolean,
+      default: false,
+    },
+    // Public-facing text when on the board. Seller may edit; defaults to request on approve.
+    publicRequestText: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: '',
+    },
+    voteCount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    boardPublishedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -80,7 +106,9 @@ const customerWantSchema = new mongoose.Schema(
 customerWantSchema.index({ businessId: 1, createdAt: -1 });
 customerWantSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 customerWantSchema.index({ businessId: 1, phoneNormalized: 1 });
+customerWantSchema.index({ businessId: 1, boardApproved: 1, voteCount: -1, boardPublishedAt: -1 });
 
+// Seller dashboard serializer. Includes private contact fields — never use on public board APIs.
 customerWantSchema.methods.toPublic = function toPublic() {
   return {
     id: this._id.toString(),
@@ -93,8 +121,25 @@ customerWantSchema.methods.toPublic = function toPublic() {
     notes: this.notes || '',
     sellerNotes: this.sellerNotes || '',
     status: this.status,
+    shareOnBoardOptIn: Boolean(this.shareOnBoardOptIn),
+    boardApproved: Boolean(this.boardApproved),
+    publicRequestText: this.publicRequestText || '',
+    voteCount: Number(this.voteCount) || 0,
+    boardPublishedAt: this.boardPublishedAt || null,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
+  };
+};
+
+// Public request board only. No names, phones, emails, notes, or customer ids.
+customerWantSchema.methods.toBoardPublic = function toBoardPublic() {
+  const text = String(this.publicRequestText || this.request || '').trim();
+  return {
+    id: this._id.toString(),
+    text,
+    voteCount: Number(this.voteCount) || 0,
+    status: this.status,
+    publishedAt: this.boardPublishedAt || this.createdAt,
   };
 };
 
