@@ -1,6 +1,7 @@
 const { body } = require('express-validator');
 const { CATEGORIES } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
+const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 
 function optionalBoolean(field, message) {
   return body(field)
@@ -19,6 +20,7 @@ const PAYMENT_FIELDS = [
   'payOnPickupEnabled',
   'paymentLink',
   'paymentQrImage',
+  'paymentUpiId',
   'paymentInstructions',
   'emailNewOrders',
   'emailPayments',
@@ -126,6 +128,19 @@ const updateSettingsRules = [
       if (value.startsWith('data:image/') || value.startsWith('/uploads/payment-qr/')) return true;
       throw new Error('Please upload a JPG, PNG, or WebP image.');
     }),
+  body('paymentUpiId')
+    .optional({ values: 'falsy' })
+    .trim()
+    .customSanitizer((value) => normalizeUpiId(value))
+    .custom((value) => {
+      if (!value) return true;
+      if (!isValidUpiId(value)) {
+        throw new Error('Enter a valid UPI ID like name@oksbi or shop@paytm.');
+      }
+      return true;
+    })
+    .isLength({ max: 320 })
+    .withMessage('UPI ID is too long.'),
   body('paymentInstructions')
     .optional()
     .trim()

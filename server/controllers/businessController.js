@@ -17,7 +17,7 @@ const updateSettings = asyncHandler(async (req, res) => {
     'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
     'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
     'paymentQrEnabled', 'paymentLinkEnabled', 'paymentInstructionsEnabled', 'payOnPickupEnabled',
-    'paymentLink', 'paymentQrImage', 'paymentInstructions',
+    'paymentLink', 'paymentQrImage', 'paymentUpiId', 'paymentInstructions',
     'emailNewOrders', 'emailPayments', 'emailCustomerWants',
   ];
   fields.forEach((field) => {

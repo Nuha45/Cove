@@ -4,7 +4,9 @@ import { navItems } from '../../routes/navItems';
 import { initials } from '../../utils/display';
 import CoveLogo from '../brand/CoveLogo';
 
-export default function Sidebar({ business, user, open, onNavigate, onLogout }) {
+export default function Sidebar({ business, businesses, user, open, onNavigate, onLogout }) {
+  const canSwitchShops = Array.isArray(businesses) && businesses.length > 1;
+
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-hidden={open ? undefined : undefined}>
       <div className="sidebar-scroll">
@@ -18,7 +20,7 @@ export default function Sidebar({ business, user, open, onNavigate, onLogout }) 
             <strong>{business?.name || 'Your business'}</strong>
             <small>{business?.category || 'Small business'}</small>
           </div>
-          <ChevronDown size={15} />
+          {canSwitchShops ? <ChevronDown size={15} aria-hidden="true" /> : null}
         </div>
 
         <nav aria-label="Workspace">

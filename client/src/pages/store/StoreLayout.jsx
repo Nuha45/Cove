@@ -8,26 +8,29 @@ import { mediaUrl } from '../../utils/media';
 function StoreChrome({ business }) {
   const { slug } = useParams();
   const { count } = useCart();
+  const shopName = business?.name || 'Shop';
 
   return (
     <div className="public-store">
       <header className="store-top">
-        <Link className="store-brand" to={`/store/${slug}`}>
-          {business?.logo ? (
-            <img className="store-mark-img" src={mediaUrl(business.logo)} alt="" />
-          ) : (
-            <span className="store-mark" aria-hidden="true">{initials(business?.name || 'S', 1)}</span>
-          )}
-          <div>
-            <strong>{business?.name || 'Shop'}</strong>
-            {business?.city ? <small>{business.city}</small> : null}
-          </div>
-        </Link>
-        <Link className="store-cart-link" to={`/store/${slug}/cart`} aria-label={`Cart, ${count} items`}>
-          <ShoppingBag size={18} />
-          <span>Cart</span>
-          {count > 0 ? <em>{count}</em> : null}
-        </Link>
+        <div className="store-top-inner">
+          <Link className="store-brand" to={`/store/${slug}`}>
+            {business?.logo ? (
+              <img className="store-mark-img" src={mediaUrl(business.logo)} alt="" />
+            ) : (
+              <span className="store-mark" aria-hidden="true">{initials(shopName, 1)}</span>
+            )}
+            <div>
+              <strong>{shopName}</strong>
+              {business?.city ? <small>{business.city}</small> : null}
+            </div>
+          </Link>
+          <Link className="store-cart-link" to={`/store/${slug}/cart`} aria-label={`Cart, ${count} items`}>
+            <ShoppingBag size={18} aria-hidden="true" />
+            <span>Cart</span>
+            {count > 0 ? <em aria-hidden="true">{count}</em> : null}
+          </Link>
+        </div>
       </header>
       <main className="store-main">
         <Outlet context={{ business }} />

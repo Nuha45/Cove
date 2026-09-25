@@ -3,15 +3,70 @@ const env = require('../config/env');
 
 const memoryOutbox = [];
 
+function envValue(name, fallback = '') {
+  if (Object.prototype.hasOwnProperty.call(process.env, name)) {
+    return String(process.env[name] ?? '').trim();
+  }
+  return String(fallback ?? '').trim();
+}
+
+function readEmailEnv() {
+  return {
+    provider: envValue('EMAIL_PROVIDER', env.email.provider).toLowerCase(),
+    from: envValue('EMAIL_FROM', env.email.from),
+    apiKey: envValue('EMAIL_API_KEY', env.email.apiKey),
+    debugLinks: envValue('EMAIL_DEBUG_LINKS', env.email.debugLinks ? 'true' : '') === 'true',
+  };
+}
+
 function currentProvider() {
-  return String(process.env.EMAIL_PROVIDER || env.email.provider || '').toLowerCase();
+  return readEmailEnv().provider;
+}
+
+function getEmailConfigSummary() {
+  const { provider, from, apiKey } = readEmailEnv();
+  return {
+    provider: provider || '(none)',
+    apiKeyConfigured: Boolean(apiKey),
+    fromConfigured: Boolean(from),
+    from,
+    appUrlConfigured: Boolean(env.appUrl),
+    appUrl: env.appUrl,
+  };
+}
+
+function logEmailConfig() {
+  if (env.nodeEnv === 'production') return;
+  const summary = getEmailConfigSummary();
+  console.info('[email-config]', {
+    provider: summary.provider,
+    apiKeyConfigured: summary.apiKeyConfigured,
+    fromConfigured: summary.fromConfigured,
+    appUrlConfigured: summary.appUrlConfigured,
+  });
 }
 
 function isConfigured() {
-  const provider = currentProvider();
+  const { provider, from, apiKey } = readEmailEnv();
   if (provider === 'console' || provider === 'memory') return true;
-  if (provider === 'resend') return Boolean(env.email.apiKey && env.email.from);
+  if (provider === 'resend') return Boolean(apiKey && from);
+  if (!provider) return false;
   return false;
+}
+
+function assertResendConfigured() {
+  const { provider, from, apiKey } = readEmailEnv();
+  if (provider !== 'resend') return;
+  if (!apiKey) {
+    throw new Error(
+      'EMAIL_PROVIDER=resend but EMAIL_API_KEY is missing. Add your Resend API key to server/.env and restart the API.'
+    );
+  }
+  if (!from) {
+    throw new Error(
+      'EMAIL_PROVIDER=resend but EMAIL_FROM is missing. Set a Resend-verified sender in server/.env and restart the API.'
+    );
+  }
 }
 
 function escapeHtml(value) {
@@ -36,8 +91,96 @@ function wrapHtml({ title, bodyHtml }) {
 </html>`;
 }
 
+function safeProviderError(status, bodyText) {
+  const trimmed = String(bodyText || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  // Never echo Authorization headers or API keys if a proxy somehow included them.
+  return trimmed
+    .replace(/re_[A-Za-z0-9_]+/g, '[redacted]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]');
+}
+
+async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
+  if (env.nodeEnv !== 'production') {
+    console.info('[email]', {
+      provider: 'resend',
+      action: 'sending',
+      from,
+      to,
+      subject,
+    });
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      html,
+      text,
+    }),
+  });
+
+  const rawBody = await response.text().catch(() => '');
+  let parsed = null;
+  try {
+    parsed = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    const detail = safeProviderError(
+      response.status,
+      (parsed && (parsed.message || parsed.error || parsed.name))
+        || rawBody
+        || response.statusText
+    );
+    if (env.nodeEnv !== 'production') {
+      console.error('[email]', {
+        provider: 'resend',
+        result: 'failed',
+        status: response.status,
+        error: detail,
+        from,
+        to,
+      });
+    }
+    throw new Error(`Resend email failed (${response.status}): ${detail}`);
+  }
+
+  if (env.nodeEnv !== 'production') {
+    console.info('[email]', {
+      provider: 'resend',
+      result: 'success',
+      id: parsed?.id || undefined,
+      to,
+      subject,
+    });
+  }
+
+  return { ok: true, provider: 'resend', id: parsed?.id };
+}
+
 async function deliver({ to, subject, html, text, meta }) {
-  const provider = currentProvider() || 'console';
+  const { provider, from, apiKey } = readEmailEnv();
+
+  if (!provider) {
+    if (env.nodeEnv !== 'production') {
+      console.info('[email]', {
+        to,
+        subject,
+        provider: 'unconfigured',
+        skipped: true,
+        preview: String(text || '').slice(0, 160),
+      });
+    }
+    return { ok: true, skipped: true, provider: 'none' };
+  }
 
   if (provider === 'memory') {
     memoryOutbox.push({
@@ -51,39 +194,21 @@ async function deliver({ to, subject, html, text, meta }) {
     return { ok: true, provider: 'memory' };
   }
 
-  if (provider === 'console' || !isConfigured()) {
+  if (provider === 'console') {
     if (env.nodeEnv !== 'production') {
-      // Never log raw tokens. meta may include a redacted note only.
       console.info('[email]', {
         to,
         subject,
-        provider: provider || 'unconfigured',
+        provider: 'console',
         preview: String(text || '').slice(0, 160),
       });
     }
-    return { ok: true, skipped: !isConfigured(), provider: provider || 'none' };
+    return { ok: true, provider: 'console' };
   }
 
   if (provider === 'resend') {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.email.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: env.email.from,
-        to: [to],
-        subject,
-        html,
-        text,
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Email provider failed (${response.status}): ${body.slice(0, 200)}`);
-    }
-    return { ok: true, provider: 'resend' };
+    assertResendConfigured();
+    return deliverViaResend({ to, subject, html, text, from, apiKey });
   }
 
   throw new Error(`Unsupported EMAIL_PROVIDER: ${provider}`);
@@ -93,7 +218,7 @@ async function sendEmail(input) {
   try {
     return await deliver(input);
   } catch (err) {
-    // Email must never crash business flows.
+    // Email must never crash business flows, but failures must be visible in development.
     console.error('[email:error]', err.message || err);
     return { ok: false, error: err.message || 'email_failed' };
   }
@@ -105,7 +230,7 @@ async function sendPasswordReset({ to, name, resetUrl }) {
     `Hi ${name || 'there'},`,
     '',
     'We received a request to reset your Cove password.',
-    `Open this link within 30 minutes to choose a new password:`,
+    'Open this link within 30 minutes to choose a new password:',
     resetUrl,
     '',
     'If you did not ask for this, you can ignore this email. Your password will stay the same.',
@@ -125,15 +250,25 @@ async function sendPasswordReset({ to, name, resetUrl }) {
     `,
   });
 
-  return sendEmail({
+  const { provider, debugLinks } = readEmailEnv();
+  const result = await sendEmail({
     to,
     subject,
     html,
     text,
-    meta: currentProvider() === 'memory' || env.email.debugLinks
+    meta: provider === 'memory' || debugLinks
       ? { resetUrl }
       : { kind: 'password_reset' },
   });
+
+  if (!result.ok && env.nodeEnv !== 'production') {
+    console.error('[email] password reset send failed', {
+      to,
+      error: result.error,
+    });
+  }
+
+  return result;
 }
 
 async function sendSellerNewOrder({ to, businessName, order, orderUrl }) {
@@ -251,4 +386,8 @@ module.exports = {
   clearMemoryOutbox,
   createResetToken,
   hashResetToken,
+  getEmailConfigSummary,
+  logEmailConfig,
+  currentProvider,
+  readEmailEnv,
 };

@@ -136,11 +136,18 @@ async function requestPasswordReset(email) {
   await user.save();
 
   const resetUrl = `${env.appUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(rawToken)}`;
-  await emailService.sendPasswordReset({
+  const sendResult = await emailService.sendPasswordReset({
     to: user.email,
     name: user.name,
     resetUrl,
   });
+
+  if (!sendResult.ok && env.nodeEnv !== 'production') {
+    console.error('[auth] password reset email was not delivered', {
+      to: user.email,
+      error: sendResult.error || 'unknown',
+    });
+  }
 
   return { message: GENERIC_RESET_MESSAGE };
 }

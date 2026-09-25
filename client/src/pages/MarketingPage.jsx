@@ -23,6 +23,7 @@ export default function MarketingPage() {
   const [contentType, setContentType] = useState(CONTENT_TYPES[0]);
   const [tone, setTone] = useState(TONES[0]);
   const [configured, setConfigured] = useState(null);
+  const [mockMode, setMockMode] = useState(false);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,6 +45,7 @@ export default function MarketingPage() {
         const active = (productResult.products || []).filter((item) => item.status === 'Active');
         setProducts(active);
         setConfigured(Boolean(status.configured));
+        setMockMode(Boolean(status.mockMode));
         if (active.length && !productId) {
           setProductId(active[0].id);
         }
@@ -74,6 +76,7 @@ export default function MarketingPage() {
       const data = await generateMarketing({ productId, contentType, tone });
       setResult(data);
       setConfigured(true);
+      setMockMode(Boolean(data.mockMode));
     } catch (err) {
       setActionError(getErrorMessage(err));
     } finally {
@@ -132,7 +135,17 @@ export default function MarketingPage() {
         subtitle="Turn a product into a caption, WhatsApp promo, or short description."
       />
 
-      {configured === false ? (
+      {mockMode ? (
+        <div className="marketing-callout marketing-callout-demo" role="status">
+          <strong>Demo mode — sample content only. No AI API call or charge is made.</strong>
+          <p>
+            Cove is returning realistic sample copy from your product details. Turn off
+            {' '}<code>AI_MOCK_MODE</code> in <code>server/.env</code> and add an OpenAI key when you want live generation.
+          </p>
+        </div>
+      ) : null}
+
+      {!mockMode && configured === false ? (
         <div className="marketing-callout" role="status">
           <strong>AI is not configured yet</strong>
           <p>

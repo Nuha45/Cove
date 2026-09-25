@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ExternalLink } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +10,7 @@ import { formatEyebrowDate, formatPrice, initials } from '../utils/display';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 import { mediaUrl } from '../utils/media';
 import { copyText, storefrontPath, storefrontUrl } from '../utils/storefront';
+import { buildUpiPayUri, isValidUpiId, upiQrDataUrl } from '../utils/upi';
 
 const tabs = [
   'Business Profile',
@@ -39,6 +40,7 @@ const emptyForm = {
   payOnPickupEnabled: true,
   paymentLink: '',
   paymentQrImage: '',
+  paymentUpiId: '',
   paymentInstructions: '',
   emailNewOrders: true,
   emailPayments: true,
@@ -66,6 +68,7 @@ function toForm(business) {
     payOnPickupEnabled: business?.payOnPickupEnabled !== false,
     paymentLink: business?.paymentLink || '',
     paymentQrImage: business?.paymentQrImage || '',
+    paymentUpiId: business?.paymentUpiId || '',
     paymentInstructions: business?.paymentInstructions || '',
     emailNewOrders: business?.emailNewOrders !== false,
     emailPayments: business?.emailPayments !== false,
@@ -87,6 +90,34 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [logoError, setLogoError] = useState('');
   const [qrError, setQrError] = useState('');
+  const [upiPreviewQr, setUpiPreviewQr] = useState('');
+
+  const sampleUpiUri = useMemo(() => {
+    if (form.currency !== 'INR' || !isValidUpiId(form.paymentUpiId)) return '';
+    return buildUpiPayUri({
+      upiId: form.paymentUpiId,
+      payeeName: form.name || 'Shop',
+      amount: 100,
+      currency: 'INR',
+      transactionNote: 'ORDER-SAMPLE',
+    });
+  }, [form.currency, form.paymentUpiId, form.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function preview() {
+      if (!sampleUpiUri) {
+        if (!cancelled) setUpiPreviewQr('');
+        return;
+      }
+      const dataUrl = await upiQrDataUrl(sampleUpiUri);
+      if (!cancelled) setUpiPreviewQr(dataUrl);
+    }
+    preview();
+    return () => {
+      cancelled = true;
+    };
+  }, [sampleUpiUri]);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,8 +226,11 @@ export default function SettingsPage() {
         next.paymentLink = 'Please enter a valid payment link starting with https://';
       }
     }
-    if (form.paymentQrEnabled && !form.paymentQrImage) {
-      next.paymentQrImage = 'Upload a QR image or turn off QR payments.';
+    if (form.paymentQrEnabled && !form.paymentQrImage && !isValidUpiId(form.paymentUpiId)) {
+      next.paymentUpiId = 'Add a UPI ID or upload a QR image, or turn off QR payments.';
+    }
+    if (form.paymentUpiId.trim() && !isValidUpiId(form.paymentUpiId)) {
+      next.paymentUpiId = 'Enter a valid UPI ID like name@oksbi or shop@paytm.';
     }
     if (form.paymentLinkEnabled && !form.paymentLink.trim()) {
       next.paymentLink = 'Add a payment link or turn off payment link.';
@@ -236,6 +270,7 @@ export default function SettingsPage() {
         payOnPickupEnabled: form.payOnPickupEnabled,
         paymentLink: form.paymentLink.trim(),
         paymentQrImage: form.paymentQrImage,
+        paymentUpiId: form.paymentUpiId.trim().toLowerCase(),
         paymentInstructions: form.paymentInstructions.trim(),
         emailNewOrders: form.emailNewOrders,
         emailPayments: form.emailPayments,
@@ -452,45 +487,104 @@ export default function SettingsPage() {
               <label className="wide settings-toggle">
                 <span>
                   <strong>{form.currency === 'INR' ? 'UPI / QR code' : 'QR code'}</strong>
-                  <small className="muted">Show your payment QR on checkout and confirmation.</small>
+                  <small className="muted">
+                    {form.currency === 'INR'
+                      ? 'Let customers pay with an order-specific UPI link and QR, or your uploaded QR.'
+                      : 'Show your payment QR on checkout and confirmation.'}
+                  </small>
                 </span>
                 <input name="paymentQrEnabled" type="checkbox" checked={form.paymentQrEnabled} onChange={update} />
               </label>
               {form.paymentQrEnabled ? (
-                <div className="wide logo-upload">
-                  {form.paymentQrImage ? (
-                    <img className="payment-qr-preview" src={mediaUrl(form.paymentQrImage)} alt="Payment QR preview" />
-                  ) : (
-                    <div className="payment-qr-preview empty">No QR yet</div>
-                  )}
-                  <div>
-                    <strong>QR image</strong>
-                    <p className="muted">JPG, PNG, or WebP · under 450KB</p>
-                    {qrError ? <span className="field-error">{qrError}</span> : null}
-                    {errors.paymentQrImage ? <span className="field-error">{errors.paymentQrImage}</span> : null}
-                  </div>
-                  <div className="logo-actions">
-                    <button className="secondary" type="button" onClick={() => qrInput.current?.click()}>
-                      Upload QR
-                    </button>
+                <>
+                  {form.currency === 'INR' ? (
+                    <label className="wide">
+                      UPI ID (VPA)
+                      <input
+                        name="paymentUpiId"
+                        value={form.paymentUpiId}
+                        onChange={update}
+                        placeholder="shopname@oksbi"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      {errors.paymentUpiId ? <span className="field-error">{errors.paymentUpiId}</span> : null}
+                      <small className="muted">
+                        Cove uses this to create an order-specific UPI payment link and QR with the exact
+                        order amount and order number prefilled. Cove never collects the money — you still
+                        confirm payment yourself after checking your account.
+                      </small>
+                      {form.paymentUpiId.trim() ? (
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => setForm((current) => ({ ...current, paymentUpiId: '' }))}
+                        >
+                          Remove UPI ID
+                        </button>
+                      ) : null}
+                    </label>
+                  ) : null}
+
+                  {sampleUpiUri && upiPreviewQr ? (
+                    <div className="wide payment-upi-preview">
+                      <strong>Buyer preview (sample ₹100)</strong>
+                      <p className="muted">
+                        After an order is placed, the amount and order number replace this sample.
+                        This is not a live payment.
+                      </p>
+                      <div className="payment-upi-preview-row">
+                        <img src={upiPreviewQr} alt="Sample order-specific UPI QR preview" />
+                        <div>
+                          <p><span className="muted">Payee</span><br /><strong>{form.name || 'Shop'}</strong></p>
+                          <p><span className="muted">UPI ID</span><br /><strong>{form.paymentUpiId.trim().toLowerCase()}</strong></p>
+                          <p><span className="muted">Sample note</span><br /><strong>ORDER-SAMPLE</strong></p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="wide logo-upload">
                     {form.paymentQrImage ? (
-                      <button
-                        className="secondary"
-                        type="button"
-                        onClick={() => setForm((current) => ({ ...current, paymentQrImage: '' }))}
-                      >
-                        Remove
+                      <img className="payment-qr-preview" src={mediaUrl(form.paymentQrImage)} alt="Payment QR preview" />
+                    ) : (
+                      <div className="payment-qr-preview empty">
+                        {form.currency === 'INR' ? 'Optional fallback QR' : 'No QR yet'}
+                      </div>
+                    )}
+                    <div>
+                      <strong>{form.currency === 'INR' ? 'Uploaded QR (fallback)' : 'QR image'}</strong>
+                      <p className="muted">
+                        {form.currency === 'INR'
+                          ? 'Optional if you added a UPI ID. Shown when a customer cannot open UPI apps. JPG, PNG, or WebP · under 450KB'
+                          : 'JPG, PNG, or WebP · under 450KB'}
+                      </p>
+                      {qrError ? <span className="field-error">{qrError}</span> : null}
+                      {errors.paymentQrImage ? <span className="field-error">{errors.paymentQrImage}</span> : null}
+                    </div>
+                    <div className="logo-actions">
+                      <button className="secondary" type="button" onClick={() => qrInput.current?.click()}>
+                        Upload QR
                       </button>
-                    ) : null}
+                      {form.paymentQrImage ? (
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={() => setForm((current) => ({ ...current, paymentQrImage: '' }))}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      ref={qrInput}
+                      className="product-file-input"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={onQrSelected}
+                    />
                   </div>
-                  <input
-                    ref={qrInput}
-                    className="product-file-input"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={onQrSelected}
-                  />
-                </div>
+                </>
               ) : null}
 
               <label className="wide settings-toggle">

@@ -113,11 +113,11 @@ export default function CustomersPage() {
             <div className="customer-table">
               <div className="table-head">
                 <span>Customer</span>
-                <span>Phone</span>
-                <span>Orders</span>
-                <span>Spent</span>
-                <span>Last order</span>
-                <span />
+                <span className="col-center">Phone</span>
+                <span className="col-center">Orders</span>
+                <span className="col-center">Spent</span>
+                <span className="col-center">Last order</span>
+                <span className="col-action" aria-hidden="true" />
               </div>
               {customers.map((customer) => (
                 <div className="table-row" key={customer.id}>
@@ -127,11 +127,13 @@ export default function CustomersPage() {
                       <small>{customer.email || 'No email'}</small>
                     </div>
                   </div>
-                  <span>{customer.phone || '—'}</span>
-                  <span>{customer.totalOrders}</span>
-                  <strong>{formatPrice(customer.totalSpent)}</strong>
-                  <span>{customer.lastOrderAt ? formatOrderDate(customer.lastOrderAt) : '—'}</span>
-                  <Link className="secondary tiny" to={`/customers/${customer.id}`}>View</Link>
+                  <span className="col-center">{customer.phone || '—'}</span>
+                  <span className="col-center">{customer.totalOrders}</span>
+                  <strong className="col-center">{formatPrice(customer.totalSpent)}</strong>
+                  <span className="col-center">{customer.lastOrderAt ? formatOrderDate(customer.lastOrderAt) : '—'}</span>
+                  <span className="col-action">
+                    <Link className="secondary tiny" to={`/customers/${customer.id}`}>View</Link>
+                  </span>
                 </div>
               ))}
             </div>

@@ -72,6 +72,16 @@ module.exports = {
     provider: process.env.AI_PROVIDER || 'openai',
     apiKey: process.env.OPENAI_API_KEY || '',
     model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    // Local-only demo content. Forced off in production even if env is set.
+    mockMode: (() => {
+      const requested = process.env.AI_MOCK_MODE === 'true';
+      const production = (process.env.NODE_ENV || 'development') === 'production';
+      if (requested && production) {
+        console.warn('[ai] AI_MOCK_MODE=true is ignored when NODE_ENV=production.');
+        return false;
+      }
+      return requested;
+    })(),
   },
   // Optional transactional email. Missing config must not crash the app.
   email: {

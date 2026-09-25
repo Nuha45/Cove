@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { CATEGORIES } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
+const { normalizeUpiId } = require('../utils/upi');
 
 const businessSchema = new mongoose.Schema(
   {
@@ -112,6 +113,14 @@ const businessSchema = new mongoose.Schema(
       maxlength: 260,
       default: '',
     },
+    // Seller UPI VPA used to build order-specific upi:// pay links (gateway-free).
+    paymentUpiId: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 320,
+      default: '',
+    },
     paymentInstructions: {
       type: String,
       trim: true,
@@ -142,6 +151,7 @@ function paymentSettings(doc) {
     payOnPickupEnabled: doc.payOnPickupEnabled !== false,
     paymentLink: doc.paymentLink || '',
     paymentQrImage: doc.paymentQrImage || '',
+    paymentUpiId: normalizeUpiId(doc.paymentUpiId),
     paymentInstructions: doc.paymentInstructions || '',
     emailNewOrders: doc.emailNewOrders !== false,
     emailPayments: doc.emailPayments !== false,
@@ -151,7 +161,11 @@ function paymentSettings(doc) {
 
 // Only enable methods that are turned on and have the required content.
 function publicPayments(doc) {
-  const qrEnabled = Boolean(doc.paymentQrEnabled) && Boolean(doc.paymentQrImage);
+  const upiId = normalizeUpiId(doc.paymentUpiId);
+  const hasUpi = Boolean(upiId);
+  const hasQrImage = Boolean(doc.paymentQrImage);
+  // QR / UPI method: uploaded static QR and/or UPI ID for order-specific intents.
+  const qrEnabled = Boolean(doc.paymentQrEnabled) && (hasUpi || hasQrImage);
   const linkEnabled = Boolean(doc.paymentLinkEnabled) && Boolean(doc.paymentLink);
   const instructionsEnabled = Boolean(doc.paymentInstructionsEnabled)
     && Boolean(String(doc.paymentInstructions || '').trim());
@@ -163,7 +177,8 @@ function publicPayments(doc) {
     instructionsEnabled,
     payOnPickupEnabled,
     paymentLink: linkEnabled ? doc.paymentLink : '',
-    paymentQrImage: qrEnabled ? doc.paymentQrImage : '',
+    paymentQrImage: qrEnabled && hasQrImage ? doc.paymentQrImage : '',
+    upiId: qrEnabled && hasUpi ? upiId : '',
     paymentInstructions: instructionsEnabled ? String(doc.paymentInstructions || '').trim() : '',
     hasConfiguredMethod: qrEnabled || linkEnabled || instructionsEnabled || payOnPickupEnabled,
   };

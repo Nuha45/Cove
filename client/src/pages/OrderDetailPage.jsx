@@ -141,10 +141,24 @@ export default function OrderDetailPage() {
                 </dl>
               </section>
 
-              <section className="card detail-card">
+              <section className={`card detail-card${order.paymentStatus === 'Payment Submitted' ? ' payment-review-card' : ''}`}>
                 <h2>Payment</h2>
-                <p className="muted">Customer payment is manual. A submitted reference is not verified payment.</p>
+                {order.paymentStatus === 'Payment Submitted' ? (
+                  <div className="payment-review-banner">
+                    <strong>Needs your review</strong>
+                    <p>
+                      Customer submitted a reference for {formatPrice(order.total)}. Check your bank or UPI app,
+                      then mark paid only if you received the correct amount. Cove does not verify the transfer.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="muted">Customer payment is manual. A submitted reference is not verified payment.</p>
+                )}
                 <dl className="detail-list">
+                  <div>
+                    <dt>Amount due</dt>
+                    <dd><strong>{formatPrice(order.total)}</strong></dd>
+                  </div>
                   <div>
                     <dt>Status</dt>
                     <dd>

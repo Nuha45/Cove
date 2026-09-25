@@ -36,8 +36,68 @@ function buildPrompt({ product, contentType, tone }) {
   };
 }
 
+/** Realistic local sample copy — never calls OpenAI. */
+function buildMockContent({ product, contentType, tone }) {
+  const name = String(product.name || 'this piece').trim();
+  const category = String(product.category || 'General').trim() || 'General';
+  const description = String(product.description || '').trim();
+  const price = Number(product.price);
+  const priceLabel = Number.isFinite(price) ? `₹${price}` : '';
+  const detail = description
+    ? description.replace(/\s+/g, ' ').slice(0, 120)
+    : `a carefully chosen pick from our ${category.toLowerCase()} collection`;
+
+  const toneLead = {
+    Friendly: 'Hey!',
+    Professional: 'Hello,',
+    Casual: 'Hi there —',
+  }[tone] || 'Hello,';
+
+  if (contentType === 'Instagram Caption') {
+    const hook = {
+      Friendly: `Meet ${name} — made to turn everyday moments into something special.`,
+      Professional: `Introducing ${name}: a refined addition to our ${category} range.`,
+      Casual: `${name} just dropped, and it is an easy yes.`,
+    }[tone] || `Introducing ${name}.`;
+
+    return [
+      hook,
+      '',
+      `${detail}${priceLabel ? ` · ${priceLabel}` : ''}.`,
+      '',
+      'Message us to order or visit the shop link in bio.',
+      '',
+      `#${category.replace(/[^a-zA-Z0-9]+/g, '') || 'Shop'} #${name.replace(/[^a-zA-Z0-9]+/g, '') || 'Product'} #SmallBusiness #Handmade #CoveShop`,
+    ].join('\n');
+  }
+
+  if (contentType === 'WhatsApp Promotion') {
+    return [
+      `${toneLead} quick update from the shop.`,
+      '',
+      `${name} is available now${priceLabel ? ` for ${priceLabel}` : ''}.`,
+      detail.endsWith('.') ? detail : `${detail}.`,
+      '',
+      'Reply here if you would like to order or ask a question.',
+    ].join('\n');
+  }
+
+  const opener = {
+    Friendly: `${name} is a lovely pick for anyone who loves ${category.toLowerCase()}.`,
+    Professional: `${name} is a thoughtfully designed piece from our ${category} collection.`,
+    Casual: `${name} keeps things simple and looks great day to day.`,
+  }[tone] || `${name} is part of our ${category} collection.`;
+
+  return [
+    opener,
+    detail.endsWith('.') ? detail : `${detail}.`,
+    priceLabel ? `Priced at ${priceLabel}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
 module.exports = {
   CONTENT_TYPES,
   TONES,
   buildPrompt,
+  buildMockContent,
 };

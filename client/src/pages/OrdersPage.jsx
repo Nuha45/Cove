@@ -9,6 +9,7 @@ import { listOrders } from '../services/orderService';
 import { formatEyebrowDate, formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
 import { itemSummary, ORDER_STATUSES, PAYMENT_STATUSES, PAYMENT_TONE, STATUS_TONE } from '../utils/orders';
+import { paymentMethodLabel } from '../utils/payments';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -95,6 +96,29 @@ export default function OrdersPage() {
         </div>
       ) : null}
 
+      <div className="order-review-filters" role="group" aria-label="Payment review shortcuts">
+        <button
+          type="button"
+          className={`secondary tiny${paymentStatus === 'Payment Submitted' ? ' selected' : ''}`}
+          onClick={() => {
+            setPaymentStatus((current) => (current === 'Payment Submitted' ? '' : 'Payment Submitted'));
+            setPage(1);
+          }}
+        >
+          Needs payment review
+        </button>
+        <button
+          type="button"
+          className={`secondary tiny${paymentStatus === 'Payment Pending' ? ' selected' : ''}`}
+          onClick={() => {
+            setPaymentStatus((current) => (current === 'Payment Pending' ? '' : 'Payment Pending'));
+            setPage(1);
+          }}
+        >
+          Payment pending
+        </button>
+      </div>
+
       <section className="card table-card">
         <div className="table-tools">
           <div className="search">
@@ -175,7 +199,7 @@ export default function OrdersPage() {
                 <span />
               </div>
               {orders.map((order) => (
-                <div className="table-row" key={order.id}>
+                <div className={`table-row${order.paymentStatus === 'Payment Submitted' ? ' order-row-review' : ''}`} key={order.id}>
                   <div className="product-cell">
                     <div>
                       <strong>{order.orderNumber}</strong>
@@ -190,7 +214,13 @@ export default function OrdersPage() {
                   </div>
                   <span className="clip">{itemSummary(order.items)}</span>
                   <strong>{formatPrice(order.total)}</strong>
-                  <Badge tone={PAYMENT_TONE[order.paymentStatus] || 'neutral'}>{order.paymentStatus}</Badge>
+                  <div className="product-cell">
+                    <Badge tone={PAYMENT_TONE[order.paymentStatus] || 'neutral'}>{order.paymentStatus}</Badge>
+                    <small>
+                      {paymentMethodLabel(order.paymentMethod) || 'No method'}
+                      {order.paymentReference ? ` · Ref ${order.paymentReference}` : ''}
+                    </small>
+                  </div>
                   <Badge tone={STATUS_TONE[order.status] || 'neutral'}>{order.status}</Badge>
                   <Link className="secondary tiny" to={`/orders/${order.id}`}>View</Link>
                 </div>
@@ -199,7 +229,7 @@ export default function OrdersPage() {
 
             <div className="order-cards">
               {orders.map((order) => (
-                <article className="order-card" key={order.id}>
+                <article className={`order-card${order.paymentStatus === 'Payment Submitted' ? ' order-row-review' : ''}`} key={order.id}>
                   <div className="order-card-top">
                     <div>
                       <strong>{order.orderNumber}</strong>
@@ -212,7 +242,13 @@ export default function OrdersPage() {
                     <small>{order.customer.phone || 'No phone'} · {itemSummary(order.items)}</small>
                   </div>
                   <div className="order-card-meta">
-                    <strong>{formatPrice(order.total)}</strong>
+                    <div>
+                      <strong>{formatPrice(order.total)}</strong>
+                      <small>
+                        {paymentMethodLabel(order.paymentMethod) || 'No method'}
+                        {order.paymentReference ? ` · ${order.paymentReference}` : ''}
+                      </small>
+                    </div>
                     <Badge tone={PAYMENT_TONE[order.paymentStatus] || 'neutral'}>{order.paymentStatus}</Badge>
                   </div>
                   <Link className="secondary" to={`/orders/${order.id}`}>View order</Link>

@@ -2,6 +2,7 @@ const Business = require('../models/Business');
 const ApiError = require('../utils/ApiError');
 const { saveLogo } = require('../utils/businessLogo');
 const { savePaymentQr } = require('../utils/paymentQrImage');
+const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 
 function asBoolean(value, fallback) {
   if (typeof value === 'boolean') return value;
@@ -83,6 +84,15 @@ async function updateSettings(businessId, input) {
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentLink')) {
     business.paymentLink = String(input.paymentLink || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'paymentUpiId')) {
+    const nextUpi = normalizeUpiId(input.paymentUpiId);
+    if (nextUpi && !isValidUpiId(nextUpi)) {
+      throw new ApiError(400, 'Please check the form and try again.', [
+        { field: 'paymentUpiId', message: 'Enter a valid UPI ID like name@oksbi or shop@paytm.' },
+      ]);
+    }
+    business.paymentUpiId = nextUpi;
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentInstructions')) {
     business.paymentInstructions = String(input.paymentInstructions || '').trim();

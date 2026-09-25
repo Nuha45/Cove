@@ -1,14 +1,40 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleCheck, Clock3 } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import { getStoreOrderConfirmation, submitStorePaymentReference } from '../../services/storeService';
 import { formatOrderDate, formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
-import { mediaUrl } from '../../utils/media';
-import { paymentMethodLabel } from '../../utils/payments';
+import { paymentMethodLabel, paymentStatusCustomerCopy } from '../../utils/payments';
 import { loadConfirmation, saveConfirmation } from '../../utils/storefront';
 import { PAYMENT_TONE, STATUS_TONE } from '../../utils/orders';
+import StorePaymentDetails from './StorePaymentDetails';
+
+function PaymentStatusCallout({ status }) {
+  const copy = paymentStatusCustomerCopy(status);
+  let Icon = Clock3;
+  let tone = 'pending';
+  if (status === 'Paid') {
+    Icon = CircleCheck;
+    tone = 'paid';
+  } else if (status === 'Payment Submitted') {
+    Icon = CircleAlert;
+    tone = 'submitted';
+  } else if (status === 'Payment Rejected') {
+    Icon = CircleAlert;
+    tone = 'rejected';
+  }
+
+  return (
+    <div className={`store-pay-status store-pay-status-${tone}`}>
+      <Icon size={20} aria-hidden="true" />
+      <div>
+        <strong>{status}</strong>
+        <p>{copy}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function StoreConfirmationPage() {
   const { slug, orderNumber } = useParams();
@@ -132,6 +158,8 @@ export default function StoreConfirmationPage() {
     && order.status !== 'Cancelled'
     && Boolean(token);
   const hasConfigured = payments?.hasConfiguredMethod;
+  const isPaid = order.paymentStatus === 'Paid';
+  const showPayDetails = Boolean(order.paymentMethod) && !isPaid;
 
   return (
     <div className="store-confirm">
@@ -140,11 +168,14 @@ export default function StoreConfirmationPage() {
         <div>
           <p className="eyebrow">ORDER PLACED</p>
           <h1>Thank you, {order.customer.name}!</h1>
-          <p>Your order was received by <strong>{business?.name || 'the shop'}</strong>. Payment is not complete until the seller confirms it.</p>
+          <p>
+            Your order was received by <strong>{business?.name || 'the shop'}</strong>.
+            {' '}Next: pay the seller (if you have not already), then optionally share a payment reference.
+          </p>
         </div>
       </div>
 
-      <section className="store-card">
+      <section className="store-card store-confirm-overview">
         <div className="store-confirm-meta">
           <div>
             <span>Order</span>
@@ -164,87 +195,104 @@ export default function StoreConfirmationPage() {
           </div>
         </div>
 
-        <h2>Amount due to {business?.name || 'the seller'}</h2>
-        <div className="totals">
-          <div><span>Subtotal</span><span>{formatPrice(order.subtotal, currency)}</span></div>
-          <div><span>Delivery fee</span><span>{formatPrice(order.deliveryFee, currency)}</span></div>
-          <div className="totals-total"><span>Total</span><strong>{formatPrice(order.total, currency)}</strong></div>
+        <div className="store-confirm-due">
+          <span>Amount due to {business?.name || 'the seller'}</span>
+          <strong>{formatPrice(order.total, currency)}</strong>
+          {order.paymentMethod ? (
+            <small>Method: {paymentMethodLabel(order.paymentMethod, currency)}</small>
+          ) : (
+            <small>Payment method not selected yet</small>
+          )}
         </div>
 
-        <h2>Pay {business?.name || 'the seller'}</h2>
+        <PaymentStatusCallout status={order.paymentStatus} />
+      </section>
+
+      <section className="store-card">
+        <h2>Next step: pay {business?.name || 'the seller'}</h2>
+
         {!hasConfigured ? (
           <div className="store-pay-pending">
             <p>
               This shop has not published payment details yet. Message {business?.name || 'the seller'}
               {business?.phone ? ` at ${business.phone}` : ''} about how to pay.
-              Your order remains payment pending.
+              Your order remains payment pending until they confirm.
             </p>
           </div>
         ) : null}
 
-        {order.paymentMethod ? (
-          <p><strong>Method:</strong> {paymentMethodLabel(order.paymentMethod, currency)}</p>
+        {showPayDetails ? (
+          <StorePaymentDetails
+            method={order.paymentMethod}
+            payments={payments}
+            businessName={business?.name || 'the seller'}
+            amount={order.total}
+            currency={currency}
+            heading="Exact amount due"
+            orderNumber={order.orderNumber}
+          />
         ) : null}
 
-        {order.paymentMethod === 'qr' && payments?.paymentQrImage ? (
-          <div className="store-pay-panel">
-            <p>Scan and pay <strong>{formatPrice(order.total, currency)}</strong>.</p>
-            <img src={mediaUrl(payments.paymentQrImage)} alt={`${business?.name} payment QR`} />
-          </div>
+        {isPaid ? (
+          <p className="store-pay-note store-pay-note-success">
+            No further payment action is needed. The seller marked this order as paid.
+          </p>
         ) : null}
-        {order.paymentMethod === 'payment_link' && payments?.paymentLink ? (
-          <div className="store-pay-panel">
-            <p>Pay <strong>{formatPrice(order.total, currency)}</strong> with the seller&apos;s link.</p>
-            <a className="secondary" href={payments.paymentLink} target="_blank" rel="noreferrer">
-              Open payment link
-            </a>
-          </div>
-        ) : null}
-        {order.paymentMethod === 'instructions' && payments?.paymentInstructions ? (
-          <div className="store-pay-panel">
-            <p>Pay <strong>{formatPrice(order.total, currency)}</strong> using these instructions:</p>
-            <p>{payments.paymentInstructions}</p>
-          </div>
-        ) : null}
-        {order.paymentMethod === 'pay_on_pickup' ? (
-          <div className="store-pay-panel">
-            <p>Pay on pickup. Bring <strong>{formatPrice(order.total, currency)}</strong> when you collect your order.</p>
-          </div>
-        ) : null}
-
-        <p className="muted">
-          A payment reference helps the seller match your transfer. Submitting a reference does not mark the order as paid.
-        </p>
 
         {canSubmitReference ? (
-          <form className="form-grid" onSubmit={handleReferenceSubmit}>
-            <label className="wide">
-              Payment reference <span className="hint-inline">(optional)</span>
+          <form className="store-pay-reference" onSubmit={handleReferenceSubmit} id="payment-reference">
+            <div className="store-pay-reference-head">
+              <h3>I&apos;ve paid — share a reference</h3>
+              <p>
+                After you return from your UPI or banking app, paste the UPI reference, UTR, or
+                transaction ID here. This helps {business?.name || 'the seller'} match your transfer —
+                it does <strong>not</strong> mark the order as paid by itself, and Cove cannot verify
+                the transfer.
+              </p>
+            </div>
+            <label>
+              Payment reference
               <input
                 value={reference}
                 onChange={(event) => setReference(event.target.value)}
                 maxLength={120}
-                placeholder="UPI reference, UTR, or transaction ID"
+                placeholder="e.g. UPI Ref 123456789012"
+                autoComplete="off"
               />
-              {fieldErrors.paymentReference ? <span className="field-error">{fieldErrors.paymentReference}</span> : null}
+              {fieldErrors.paymentReference ? (
+                <span className="field-error">{fieldErrors.paymentReference}</span>
+              ) : null}
             </label>
-            {refError ? <p className="form-error wide">{refError}</p> : null}
-            <button className="secondary" type="submit" disabled={savingRef}>
-              {savingRef ? 'Saving...' : order.paymentStatus === 'Payment Submitted' ? 'Update reference' : 'I have paid / submit reference'}
+            {refError ? <p className="form-error">{refError}</p> : null}
+            <button className="secondary" type="submit" disabled={savingRef || !reference.trim()}>
+              {savingRef
+                ? 'Saving...'
+                : order.paymentStatus === 'Payment Submitted'
+                  ? 'Update reference'
+                  : 'Submit payment reference'}
             </button>
           </form>
         ) : null}
 
         {order.paymentReference ? (
-          <p className="muted">
+          <p className="store-pay-submitted-ref">
             Submitted reference: <strong>{order.paymentReference}</strong>
             {order.paymentReferenceSubmittedAt
               ? ` · ${formatOrderDate(order.paymentReferenceSubmittedAt)}`
               : ''}
           </p>
         ) : null}
+      </section>
 
-        <h2>Items</h2>
+      <section className="store-card">
+        <h2>Order details</h2>
+        <div className="totals">
+          <div><span>Subtotal</span><span>{formatPrice(order.subtotal, currency)}</span></div>
+          <div><span>Delivery fee</span><span>{formatPrice(order.deliveryFee, currency)}</span></div>
+          <div className="totals-total"><span>Total</span><strong>{formatPrice(order.total, currency)}</strong></div>
+        </div>
+
+        <h3 className="store-confirm-subhead">Items</h3>
         {order.items.map((item) => (
           <div className="store-summary-line" key={`${item.name}-${item.quantity}-${item.price}`}>
             <span>{item.name} × {item.quantity}</span>
@@ -252,9 +300,11 @@ export default function StoreConfirmationPage() {
           </div>
         ))}
 
-        <h2>Fulfilment</h2>
+        <h3 className="store-confirm-subhead">Fulfilment</h3>
         <p><strong>{order.deliveryMethod}</strong></p>
-        {order.deliveryMethod === 'Delivery' ? <p>{order.deliveryAddress}</p> : <p>The seller will share pickup details with you.</p>}
+        {order.deliveryMethod === 'Delivery'
+          ? <p>{order.deliveryAddress}</p>
+          : <p>The seller will share pickup details with you.</p>}
         {order.notes ? <p className="muted">Notes: {order.notes}</p> : null}
       </section>
 

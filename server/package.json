@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --require ./tests/_preload.js --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

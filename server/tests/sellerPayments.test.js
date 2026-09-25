@@ -139,16 +139,38 @@ describe('sellerPayments', { timeout: 180000 }, () => {
     assert.equal(store.data.business.ownerId, undefined);
     assert.equal(store.data.business.id, undefined);
 
+    const upiOnly = await api('PATCH', '/api/business/settings', {
+      token: owner.token,
+      body: {
+        paymentQrEnabled: true,
+        paymentUpiId: 'nuha@oksbi',
+        paymentQrImage: '',
+      },
+    });
+    assert.equal(upiOnly.status, 200, JSON.stringify(upiOnly.data));
+    assert.equal(upiOnly.data.business.paymentUpiId, 'nuha@oksbi');
+    const storeUpi = await api('GET', `/api/store/${owner.slug}`);
+    assert.equal(storeUpi.data.business.payments.qrEnabled, true);
+    assert.equal(storeUpi.data.business.payments.upiId, 'nuha@oksbi');
+
+    const badUpi = await api('PATCH', '/api/business/settings', {
+      token: owner.token,
+      body: { paymentUpiId: 'not-a-vpa' },
+    });
+    assert.equal(badUpi.status, 400);
+
     await api('PATCH', '/api/business/settings', {
       token: owner.token,
       body: {
         paymentQrEnabled: false,
+        paymentUpiId: '',
         paymentLinkEnabled: false,
         paymentInstructionsEnabled: false,
       },
     });
     const hidden = await api('GET', `/api/store/${owner.slug}`);
     assert.equal(hidden.data.business.payments.qrEnabled, false);
+    assert.equal(hidden.data.business.payments.upiId, '');
     assert.equal(hidden.data.business.payments.linkEnabled, false);
     assert.equal(hidden.data.business.payments.instructionsEnabled, false);
     assert.equal(hidden.data.business.payments.paymentLink, '');

@@ -5,9 +5,9 @@ import { useCart } from '../../context/CartContext';
 import { createStoreOrder } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
-import { enabledCheckoutMethods, paymentMethodLabel } from '../../utils/payments';
+import { enabledCheckoutMethods, paymentMethodIcon } from '../../utils/payments';
 import { saveConfirmation } from '../../utils/storefront';
-import { mediaUrl } from '../../utils/media';
+import StorePaymentDetails from './StorePaymentDetails';
 
 export default function StoreCheckoutPage() {
   const { slug } = useParams();
@@ -174,7 +174,7 @@ export default function StoreCheckoutPage() {
       </Link>
       <h1>Checkout</h1>
       <p className="muted">
-        Ordering from <strong>{business?.name || 'this shop'}</strong>. Pay the seller directly —
+        Ordering from <strong>{business?.name || 'this shop'}</strong>. You pay the seller directly —
         Cove does not collect or automatically verify payment.
       </p>
 
@@ -214,8 +214,14 @@ export default function StoreCheckoutPage() {
               </label>
             ) : null}
 
-            <div className="wide">
-              <strong>How will you pay {business?.name || 'the seller'}?</strong>
+            <div className="wide store-pay-section">
+              <div className="store-pay-section-head">
+                <strong>How will you pay {business?.name || 'the seller'}?</strong>
+                <p className="muted">
+                  Choose one method, then place the order. You will pay using the details shown on the
+                  confirmation page — this button only places the order.
+                </p>
+              </div>
               {!paymentOptions.length ? (
                 <div className="store-pay-pending">
                   <p>
@@ -225,52 +231,44 @@ export default function StoreCheckoutPage() {
                 </div>
               ) : (
                 <div className="store-pay-options" role="radiogroup" aria-label="Payment method">
-                  {paymentOptions.map((option) => (
-                    <label className="store-pay-option" key={option.value}>
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        value={option.value}
-                        checked={form.paymentMethod === option.value}
-                        onChange={update}
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  ))}
+                  {paymentOptions.map((option) => {
+                    const Icon = paymentMethodIcon(option.value);
+                    const selected = form.paymentMethod === option.value;
+                    return (
+                      <label
+                        className={`store-pay-option ${selected ? 'selected' : ''}`}
+                        key={option.value}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value={option.value}
+                          checked={selected}
+                          onChange={update}
+                        />
+                        <span className="store-pay-option-icon" aria-hidden="true">
+                          <Icon size={18} />
+                        </span>
+                        <span className="store-pay-option-copy">
+                          <strong>{option.label}</strong>
+                          <small>{option.hint}</small>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
               {errors.paymentMethod ? <span className="field-error">{errors.paymentMethod}</span> : null}
 
-              {selectedPayment && form.paymentMethod === 'qr' && payments?.paymentQrImage ? (
-                <div className="store-pay-panel">
-                  <p>Scan this QR to pay <strong>{formatPrice(estimatedTotal, currency)}</strong> to {business?.name}.</p>
-                  <img src={mediaUrl(payments.paymentQrImage)} alt={`${business?.name} payment QR`} />
-                  <p className="muted">Payment is not verified automatically. The seller confirms after your order.</p>
-                </div>
-              ) : null}
-              {selectedPayment && form.paymentMethod === 'payment_link' && payments?.paymentLink ? (
-                <div className="store-pay-panel">
-                  <p>Open the seller&apos;s payment link and pay <strong>{formatPrice(estimatedTotal, currency)}</strong>.</p>
-                  <a className="secondary" href={payments.paymentLink} target="_blank" rel="noreferrer">
-                    Open payment link
-                  </a>
-                  <p className="muted">Payment is not verified automatically.</p>
-                </div>
-              ) : null}
-              {selectedPayment && form.paymentMethod === 'instructions' && payments?.paymentInstructions ? (
-                <div className="store-pay-panel">
-                  <p>Pay <strong>{formatPrice(estimatedTotal, currency)}</strong> using these instructions:</p>
-                  <p>{payments.paymentInstructions}</p>
-                  <p className="muted">Payment is not verified automatically.</p>
-                </div>
-              ) : null}
-              {selectedPayment && form.paymentMethod === 'pay_on_pickup' ? (
-                <div className="store-pay-panel">
-                  <p>
-                    You chose <strong>{paymentMethodLabel('pay_on_pickup', currency)}</strong>.
-                    Pay {business?.name} when you collect the order. Total due: <strong>{formatPrice(estimatedTotal, currency)}</strong>.
-                  </p>
-                </div>
+              {selectedPayment ? (
+                <StorePaymentDetails
+                  method={form.paymentMethod}
+                  payments={payments}
+                  businessName={business?.name || 'the seller'}
+                  amount={estimatedTotal}
+                  currency={currency}
+                  compact
+                />
               ) : null}
             </div>
 
@@ -298,7 +296,10 @@ export default function StoreCheckoutPage() {
             </div>
             <div className="totals-total"><span>Total to pay seller</span><strong>{formatPrice(estimatedTotal, currency)}</strong></div>
           </div>
-          <p className="muted">After you place the order, payment stays pending until the seller confirms it.</p>
+          <p className="muted">
+            After you place the order, you will see payment details on the next page. Payment stays
+            pending until the seller confirms they received it.
+          </p>
           <button className="primary" type="submit" disabled={submitting}>
             {submitting ? 'Placing order...' : 'Place order'}
           </button>

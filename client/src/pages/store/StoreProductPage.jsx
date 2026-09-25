@@ -74,25 +74,30 @@ export default function StoreProductPage() {
   return (
     <div className="store-detail">
       <Link className="back-link" to={`/store/${slug}`}>
-        <ArrowLeft size={16} /> Shop
+        <ArrowLeft size={16} aria-hidden="true" /> Shop
       </Link>
 
       <div className="store-detail-grid">
         <div className="store-gallery">
           {images.length ? (
-            <img src={mediaUrl(images[activeImage] || images[0])} alt={product.name} />
+            <img
+              className="store-gallery-main"
+              src={mediaUrl(images[activeImage] || images[0])}
+              alt={product.name}
+            />
           ) : (
             <span className="store-thumb-fallback large" aria-hidden="true"><Package size={42} /></span>
           )}
           {images.length > 1 ? (
-            <div className="store-thumbs">
+            <div className="store-thumbs" role="list">
               {images.map((image, index) => (
                 <button
                   key={image}
                   type="button"
                   className={index === activeImage ? 'selected' : ''}
                   onClick={() => setActiveImage(index)}
-                  aria-label={`Image ${index + 1}`}
+                  aria-label={`Show image ${index + 1} of ${images.length}`}
+                  aria-pressed={index === activeImage}
                 >
                   <img src={mediaUrl(image)} alt="" />
                 </button>
@@ -104,48 +109,69 @@ export default function StoreProductPage() {
         <div className="store-detail-copy">
           <p className="eyebrow">{product.category || 'PRODUCT'}</p>
           <h1>{product.name}</h1>
-          <strong className="store-price">{formatPrice(product.price, currency)}</strong>
-          <p className={product.available ? 'in-stock' : 'out-stock'}>{product.stockAvailability}</p>
+          <div className="store-detail-price-row">
+            <strong className="store-price">{formatPrice(product.price, currency)}</strong>
+            <p className={product.available ? 'in-stock' : 'out-stock'}>{product.stockAvailability}</p>
+          </div>
           {product.description ? <p className="store-description">{product.description}</p> : null}
 
           {product.available ? (
             <div className="store-buy">
-              <div className="qty-control">
-                <button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => setQuantity((current) => Math.max(1, current - 1))}>
-                  <Minus size={14} />
-                </button>
-                <input
-                  aria-label="Quantity"
-                  inputMode="numeric"
-                  value={quantity}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    if (!Number.isFinite(next)) return;
-                    setQuantity(Math.min(max, Math.max(1, next)));
+              <div className="store-buy-qty">
+                <label className="store-qty-label" htmlFor={`qty-${product.id}`}>Quantity</label>
+                <div className="qty-control">
+                  <button
+                    type="button"
+                    aria-label="Decrease quantity"
+                    disabled={quantity <= 1}
+                    onClick={() => setQuantity((current) => Math.max(1, current - 1))}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <input
+                    id={`qty-${product.id}`}
+                    aria-label="Quantity"
+                    inputMode="numeric"
+                    value={quantity}
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      if (!Number.isFinite(next)) return;
+                      setQuantity(Math.min(max, Math.max(1, next)));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Increase quantity"
+                    disabled={quantity >= max}
+                    onClick={() => setQuantity((current) => Math.min(max, current + 1))}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="store-buy-actions">
+                <button className="primary" type="button" onClick={handleAdd}>Add to cart</button>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => {
+                    if (!product?.available) return;
+                    const ok = addItem(product, quantity);
+                    if (!ok) {
+                      setNote('That quantity is not available.');
+                      return;
+                    }
+                    navigate(`/store/${slug}/cart`);
                   }}
-                />
-                <button type="button" aria-label="Increase quantity" disabled={quantity >= max} onClick={() => setQuantity((current) => Math.min(max, current + 1))}>
-                  <Plus size={14} />
+                >
+                  Buy now
                 </button>
               </div>
-              <button className="primary" type="button" onClick={handleAdd}>Add to cart</button>
-              <button className="secondary" type="button" onClick={() => {
-                if (!product?.available) return;
-                const ok = addItem(product, quantity);
-                if (!ok) {
-                  setNote('That quantity is not available.');
-                  return;
-                }
-                navigate(`/store/${slug}/cart`);
-              }}
-              >
-                Buy now
-              </button>
             </div>
           ) : (
-            <button className="primary" type="button" disabled>Unavailable</button>
+            <button className="primary store-buy-unavailable" type="button" disabled>Unavailable</button>
           )}
-          {note ? <p className="inline-note">{note}</p> : null}
+          {note ? <p className="inline-note" role="status">{note}</p> : null}
         </div>
       </div>
     </div>

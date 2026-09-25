@@ -132,17 +132,17 @@ export default function CustomerWantsPage() {
               <div className="table-head">
                 <span>Request</span>
                 <span>Customer</span>
-                <span>Qty</span>
-                <span>Status</span>
-                <span>Date</span>
-                <span />
+                <span className="col-qty">Qty</span>
+                <span className="col-status">Status</span>
+                <span className="col-date">Date</span>
+                <span className="col-action" aria-hidden="true" />
               </div>
               {wants.map((want) => (
                 <div className="table-row" key={want.id}>
-                  <div className="product-cell">
+                  <div className="product-cell want-request-cell">
                     <div>
-                      <strong className="clip">{want.request}</strong>
-                      {want.notes ? <small className="clip">{want.notes}</small> : null}
+                      <strong title={want.request}>{want.request}</strong>
+                      {want.notes ? <small title={want.notes}>{want.notes}</small> : null}
                     </div>
                   </div>
                   <div className="product-cell">
@@ -151,10 +151,14 @@ export default function CustomerWantsPage() {
                       <small>{want.phone || 'No phone'}</small>
                     </div>
                   </div>
-                  <span>{want.quantity || '—'}</span>
-                  <Badge tone={WANT_STATUS_TONE[want.status] || 'neutral'}>{want.status}</Badge>
-                  <span>{formatOrderDate(want.createdAt)}</span>
-                  <Link className="secondary tiny" to={`/customer-wants/${want.id}`}>View</Link>
+                  <span className="col-qty">{want.quantity || '—'}</span>
+                  <span className="col-status">
+                    <Badge tone={WANT_STATUS_TONE[want.status] || 'neutral'}>{want.status}</Badge>
+                  </span>
+                  <span className="col-date">{formatOrderDate(want.createdAt)}</span>
+                  <span className="col-action">
+                    <Link className="secondary tiny" to={`/customer-wants/${want.id}`}>View</Link>
+                  </span>
                 </div>
               ))}
             </div>

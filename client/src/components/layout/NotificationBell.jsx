@@ -10,6 +10,9 @@ import {
 import { formatOrderDate } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 
+const POLL_MS = 25000;
+const TOAST_MS = 5500;
+
 function hrefFor(notification) {
   if (notification.relatedEntityType === 'order' && notification.relatedEntityId) {
     return `/orders/${notification.relatedEntityId}`;
@@ -25,18 +28,63 @@ function hrefFor(notification) {
 export default function NotificationBell() {
   const navigate = useNavigate();
   const wrapRef = useRef(null);
+  const knownIdsRef = useRef(null);
+  const openRef = useRef(false);
+  const toastTimerRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
 
-  async function refreshCount() {
+  openRef.current = open;
+
+  function clearToastTimer() {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+  }
+
+  function showToast(notification) {
+    clearToastTimer();
+    setToast(notification);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, TOAST_MS);
+  }
+
+  async function poll({ announce }) {
     try {
-      const result = await getUnreadNotificationCount();
-      setCount(Number(result.count) || 0);
+      const [listResult, countResult] = await Promise.all([
+        listNotifications({ limit: 20 }),
+        getUnreadNotificationCount(),
+      ]);
+      const notifications = listResult.notifications || [];
+      const nextCount = Number(countResult.count) || 0;
+      setCount(nextCount);
+      if (openRef.current) {
+        setItems(notifications);
+      }
+
+      const ids = notifications.map((item) => item.id);
+      if (knownIdsRef.current === null) {
+        knownIdsRef.current = new Set(ids);
+        return;
+      }
+
+      if (announce) {
+        const newcomers = notifications.filter((item) => !knownIdsRef.current.has(item.id));
+        if (newcomers.length) {
+          showToast(newcomers[0]);
+        }
+      }
+
+      ids.forEach((id) => knownIdsRef.current.add(id));
     } catch {
-      // Keep the last known count if the request fails.
+      // Keep the last known state if polling fails.
     }
   }
 
@@ -48,8 +96,14 @@ export default function NotificationBell() {
         listNotifications({ limit: 20 }),
         getUnreadNotificationCount(),
       ]);
-      setItems(listResult.notifications || []);
+      const notifications = listResult.notifications || [];
+      setItems(notifications);
       setCount(Number(countResult.count) || 0);
+      if (knownIdsRef.current === null) {
+        knownIdsRef.current = new Set(notifications.map((item) => item.id));
+      } else {
+        notifications.forEach((item) => knownIdsRef.current.add(item.id));
+      }
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -58,7 +112,29 @@ export default function NotificationBell() {
   }
 
   useEffect(() => {
-    refreshCount();
+    let cancelled = false;
+
+    async function tick(announce) {
+      if (cancelled) return;
+      await poll({ announce });
+    }
+
+    tick(false);
+    const intervalId = window.setInterval(() => tick(true), POLL_MS);
+
+    function onVisibility() {
+      if (document.visibilityState === 'visible') {
+        tick(true);
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearToastTimer();
+    };
   }, []);
 
   useEffect(() => {
@@ -96,6 +172,15 @@ export default function NotificationBell() {
     } catch (err) {
       setError(getErrorMessage(err));
     }
+  }
+
+  function handleToastClick() {
+    if (!toast) return;
+    const href = hrefFor(toast);
+    clearToastTimer();
+    setToast(null);
+    if (href) navigate(href);
+    else setOpen(true);
   }
 
   return (
@@ -142,6 +227,17 @@ export default function NotificationBell() {
             ))}
           </ul>
         </div>
+      ) : null}
+      {toast ? (
+        <button
+          className="notification-toast"
+          type="button"
+          onClick={handleToastClick}
+          aria-live="polite"
+        >
+          <strong>{toast.title}</strong>
+          <span>{toast.message}</span>
+        </button>
       ) : null}
     </div>
   );

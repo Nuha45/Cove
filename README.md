@@ -41,12 +41,17 @@ Transactional email is optional. Without credentials, Cove still runs; password-
 
 1. Copy `server/.env.example` values into `server/.env`.
 2. Set:
-   - `EMAIL_PROVIDER=resend` (or `console` / leave blank for local skip)
-   - `EMAIL_FROM=Cove <onboarding@yourdomain.com>`
+   - `EMAIL_PROVIDER=resend` (or `console` for local logging only)
+   - `EMAIL_FROM=Cove <onboarding@resend.dev>` for Resend testing, or a sender on a domain you verified in Resend
    - `EMAIL_API_KEY=...` (Resend API key)
    - `APP_URL=http://localhost:5173` (frontend URL used in reset links)
-3. Restart the API.
-4. Use **Forgot password** on the login page to send a reset email.
+3. Restart the API after every `.env` change (`npm run dev` in `server/`).
+4. On startup you should see `[email-config] provider=resend apiKeyConfigured=true ...`.
+5. Use **Forgot password** on the login page to send a reset email.
+
+**Important:** A personal Gmail address is not a valid Resend `EMAIL_FROM` unless that domain is verified in Resend. Use `onboarding@resend.dev` for development, or verify your own domain.
+
+If `EMAIL_PROVIDER=resend` and credentials are missing or Resend rejects the sender, Cove logs a clear error in development. It no longer silently falls back to console mode.
 
 For automated tests, the server uses an in-memory email outbox (`EMAIL_PROVIDER=memory`) and never prints raw reset tokens.
 

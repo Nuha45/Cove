@@ -52,89 +52,121 @@ export default function StoreHomePage() {
   }, [slug, query, category]);
 
   const emptyBecauseFilter = state === 'ready' && products.length === 0 && (query || category);
+  const metaBits = [];
+  if (business.phone) metaBits.push(business.phone);
+  if (business.deliveryEnabled) {
+    metaBits.push(
+      Number(business.deliveryFee) > 0
+        ? `Delivery from ${formatPrice(business.deliveryFee, business.currency)}`
+        : 'Delivery available'
+    );
+  }
+  if (business.pickupEnabled) metaBits.push('Pickup available');
 
   return (
     <>
       <section className="store-hero">
         <p className="eyebrow">{business.category || 'SHOP'}</p>
         <h1>{business.name}</h1>
-        <p>{business.description || 'Browse the collection and place your order here.'}</p>
-        <div className="store-hero-meta">
-          {business.phone ? <small>Questions? {business.phone}</small> : null}
-          {business.email ? <small>{business.email}</small> : null}
-          {business.deliveryEnabled ? (
-            <small>Delivery {Number(business.deliveryFee) > 0 ? `from ${formatPrice(business.deliveryFee, business.currency)}` : 'available'}</small>
-          ) : null}
-          {business.pickupEnabled ? <small>Pickup available</small> : null}
-        </div>
-      </section>
-
-      <section className="store-toolbar">
-        <div className="search">
-          <Search size={17} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search products"
-            aria-label="Search products"
-          />
-        </div>
-        {categories.length > 0 ? (
-          <select
-            className="filter-select"
-            aria-label="Filter by category"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-          >
-            <option value="">All categories</option>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
+        <p className="store-hero-lead">
+          {business.description || 'Browse the collection and place your order here.'}
+        </p>
+        {metaBits.length ? (
+          <p className="store-hero-meta-line">
+            {metaBits.map((bit, index) => (
+              <span key={bit}>
+                {index > 0 ? <span className="store-meta-dot" aria-hidden="true">·</span> : null}
+                {bit}
+              </span>
+            ))}
+          </p>
         ) : null}
       </section>
 
-      {state === 'loading' ? <div className="store-panel">Loading products...</div> : null}
-      {state === 'error' ? <div className="store-panel form-error">{error}</div> : null}
-
-      {state === 'ready' && products.length === 0 ? (
-        <div className="store-panel">
-          <EmptyState
-            title={emptyBecauseFilter ? 'No matching products' : 'Nothing for sale yet'}
-            text={emptyBecauseFilter
-              ? 'Try a different search or category.'
-              : 'This shop has not listed any products yet. Check back soon.'}
-          />
-          {emptyBecauseFilter ? (
-            <Link className="secondary" to={`/store/${slug}/want`}>Request something</Link>
-          ) : null}
+      <aside className="store-want-cta">
+        <div className="store-want-cta-copy">
+          <strong>Looking for something specific?</strong>
+          <p>Tell {business.name} what you need — they will see your request in one place.</p>
         </div>
-      ) : null}
+        <Link className="primary" to={`/store/${slug}/want`}>Request something</Link>
+      </aside>
 
-      {state === 'ready' && products.length > 0 ? (
-        <div className="store-grid">
-          {products.map((product) => (
-            <Link className="store-product-card" key={product.id} to={`/store/${slug}/product/${product.id}`}>
-              <ProductImage product={product} />
-              <div>
-                <strong>{product.name}</strong>
-                <span>{formatPrice(product.price, business.currency)}</span>
-                <small className={product.available ? 'in-stock' : 'out-stock'}>
-                  {product.stockAvailability}
-                </small>
-              </div>
-            </Link>
-          ))}
-        </div>
-      ) : null}
-
-      {state === 'ready' ? (
-        <section className="store-want-cta">
+      <section className="store-catalog">
+        <div className="store-catalog-head">
           <div>
-            <strong>Can&apos;t find what you&apos;re looking for?</strong>
-            <p>Tell the shop what you need. They will see your request in one place.</p>
+            <h2>Collection</h2>
+            {state === 'ready' && products.length > 0 ? (
+              <p className="muted">
+                {products.length} {products.length === 1 ? 'piece' : 'pieces'}
+                {category ? ` in ${category}` : ''}
+              </p>
+            ) : null}
           </div>
-          <Link className="secondary" to={`/store/${slug}/want`}>Request something</Link>
-        </section>
-      ) : null}
+          <div className="store-toolbar" aria-label="Browse products">
+            <div className="search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search"
+                aria-label="Search products"
+              />
+            </div>
+            {categories.length > 0 ? (
+              <select
+                className="filter-select"
+                aria-label="Filter by category"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              >
+                <option value="">All categories</option>
+                {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            ) : null}
+          </div>
+        </div>
+
+        {state === 'loading' ? <div className="store-panel">Loading products...</div> : null}
+        {state === 'error' ? <div className="store-panel form-error">{error}</div> : null}
+
+        {state === 'ready' && products.length === 0 ? (
+          <div className="store-panel">
+            <EmptyState
+              title={emptyBecauseFilter ? 'No matching products' : 'Nothing for sale yet'}
+              text={emptyBecauseFilter
+                ? 'Try a different search or category.'
+                : 'This shop has not listed any products yet. Check back soon.'}
+            />
+            {emptyBecauseFilter ? (
+              <Link className="secondary" to={`/store/${slug}/want`}>Request something</Link>
+            ) : null}
+          </div>
+        ) : null}
+
+        {state === 'ready' && products.length > 0 ? (
+          <div className="store-grid">
+            {products.map((product) => (
+              <Link
+                className="store-product-card"
+                key={product.id}
+                to={`/store/${slug}/product/${product.id}`}
+              >
+                <ProductImage product={product} />
+                <div className="store-product-copy">
+                  {product.category ? <span className="store-product-category">{product.category}</span> : null}
+                  <strong>{product.name}</strong>
+                  <div className="store-product-meta">
+                    <span className="store-product-price">{formatPrice(product.price, business.currency)}</span>
+                    <small className={product.available ? 'in-stock' : 'out-stock'}>
+                      {product.stockAvailability}
+                    </small>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </section>
     </>
   );
 }
@@ -148,5 +180,5 @@ function ProductImage({ product }) {
       </span>
     );
   }
-  return <img src={mediaUrl(src)} alt="" />;
+  return <img src={mediaUrl(src)} alt={product.name || 'Product'} />;
 }
