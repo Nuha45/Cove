@@ -11,13 +11,16 @@ const billingRoutes = require('./billingRoutes');
 const marketingRoutes = require('./marketingRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const adminRoutes = require('./adminRoutes');
+const seoRoutes = require('./seoRoutes');
 
 const router = express.Router();
 
+// Load balancers treat non-2xx as unhealthy, so report 503 while the database is unreachable.
 router.get('/health', (req, res) => {
   const connected = mongoose.connection.readyState === 1;
-  res.json({
-    status: 'ok',
+  res.status(connected ? 200 : 503).json({
+    status: connected ? 'ok' : 'degraded',
     database: connected ? 'connected' : 'disconnected',
   });
 });
@@ -33,5 +36,7 @@ router.use('/marketing', marketingRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/store', storeRoutes);
+router.use('/admin', adminRoutes);
+router.use('/seo', seoRoutes);
 
 module.exports = router;

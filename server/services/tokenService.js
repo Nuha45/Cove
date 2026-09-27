@@ -20,11 +20,12 @@ function verifyToken(token) {
 }
 
 function cookieOptions() {
-  const secure = env.nodeEnv === 'production';
+  // Browsers reject SameSite=None cookies that are not Secure.
+  const secure = env.isProduction || env.cookieSameSite === 'none';
   return {
     httpOnly: true,
     secure,
-    sameSite: secure ? 'none' : 'lax',
+    sameSite: env.cookieSameSite,
     path: '/',
   };
 }

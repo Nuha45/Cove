@@ -67,7 +67,7 @@ export default function AnalyticsPage() {
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Analytics"
-        subtitle="Simple numbers from your real orders, customers, and requests."
+        subtitle="See how your shop is performing over time."
       />
 
       <div className="stats-grid analytics-stats">
@@ -145,7 +145,10 @@ export default function AnalyticsPage() {
         <section className="card">
           <SectionHead title="Top products" />
           {analytics.topProducts.length === 0 ? (
-            <EmptyState title="No sales yet" text="Products appear here after non-cancelled orders." />
+            <EmptyState
+              title="No sales yet"
+              text="Your insights will appear once your shop starts receiving activity."
+            />
           ) : (
             <ul className="analytics-list">
               {analytics.topProducts.map((item) => (

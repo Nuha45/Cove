@@ -74,7 +74,7 @@ export default function OrdersPage() {
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Orders"
-        subtitle="Manage your orders in one simple place."
+        subtitle="Orders placed through your storefront appear here automatically."
         action={
           <Link className="primary" to="/orders/new" aria-label="New order">
             <Plus size={17} /> New order
@@ -175,11 +175,11 @@ export default function OrdersPage() {
               title={emptyBecauseFilter ? 'No matching orders' : 'No orders yet'}
               text={emptyBecauseFilter
                 ? 'Try a different search or filter.'
-                : 'When you record an order, it will show up here.'}
+                : 'When customers order through your storefront, they’ll appear here automatically.'}
             />
             {!emptyBecauseFilter ? (
-              <Link className="primary" to="/orders/new">
-                <Plus size={17} /> New order
+              <Link className="primary" to="/storefront">
+                Share your storefront
               </Link>
             ) : null}
           </div>

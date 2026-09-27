@@ -1,0 +1,291 @@
+const { describe, it, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('http');
+const mongoose = require('mongoose');
+const connectDB = require('../config/db');
+const app = require('../app');
+const User = require('../models/User');
+const Business = require('../models/Business');
+const Subscription = require('../models/Subscription');
+const Product = require('../models/Product');
+const Order = require('../models/Order');
+const OrderCounter = require('../models/OrderCounter');
+const Customer = require('../models/Customer');
+const CustomerWant = require('../models/CustomerWant');
+const Notification = require('../models/Notification');
+const { signToken } = require('../services/tokenService');
+const { accountStatus } = require('../utils/adminStatus');
+
+const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const password = 'AdminTest123';
+const createdBusinessIds = [];
+
+let server;
+let base;
+
+async function api(method, path, { token, body } = {}) {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: {
+      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...(token ? { cookie: `cove_token=${token}` } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+  return { status: response.status, data };
+}
+
+async function registerTenant(label, extraBody = {}) {
+  const email = `admin-${label}-${stamp}@example.com`;
+  const registered = await api('POST', '/api/auth/register', {
+    body: {
+      name: `${label} Owner`,
+      email,
+      password,
+      businessName: `${label} Shop ${stamp.slice(-6)}`,
+      category: 'Jewelry & Accessories',
+      ...extraBody,
+    },
+  });
+  assert.equal(registered.status, 201, JSON.stringify(registered.data));
+  const user = await User.findOne({ email });
+  const business = await Business.findById(user.businessId);
+  createdBusinessIds.push(user.businessId);
+  return {
+    email,
+    user,
+    registered,
+    token: signToken(user),
+    businessId: String(user.businessId),
+    slug: business.slug,
+    name: business.name,
+  };
+}
+
+async function addProduct(token, name) {
+  const response = await api('POST', '/api/products', {
+    token,
+    body: { name, price: 100, stockQuantity: 20, category: 'Jewelry & Accessories', status: 'Active' },
+  });
+  assert.equal(response.status, 201, JSON.stringify(response.data));
+  return response.data.product;
+}
+
+async function addOrder(token, productId, phone) {
+  const response = await api('POST', '/api/orders', {
+    token,
+    body: {
+      customer: { name: `Buyer ${phone}`, phone, email: '' },
+      items: [{ productId, quantity: 1 }],
+      deliveryMethod: 'Pickup',
+      deliveryAddress: '',
+      notes: '',
+    },
+  });
+  assert.equal(response.status, 201, JSON.stringify(response.data));
+  return response.data.order;
+}
+
+describe('admin', { timeout: 180000 }, () => {
+  let admin;
+  let seller;
+  let other;
+
+  before(async () => {
+    await connectDB();
+    server = http.createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${server.address().port}`;
+
+    admin = await registerTenant('operator');
+    await User.updateOne({ _id: admin.user._id }, { $set: { isPlatformAdmin: true } });
+
+    seller = await registerTenant('seller');
+    other = await registerTenant('other');
+
+    const sellerProductA = await addProduct(seller.token, 'Seller Ring');
+    await addProduct(seller.token, 'Seller Chain');
+    await addOrder(seller.token, sellerProductA.id, '9876600001');
+    const wanted = await api('POST', `/api/store/${seller.slug}/wants`, {
+      body: { name: 'Seller Want', phone: '9876600002', request: 'Looking for a silver bangle.', quantity: 1 },
+    });
+    assert.equal(wanted.status, 201, JSON.stringify(wanted.data));
+
+    const otherProducts = await Promise.all([
+      addProduct(other.token, 'Other Ring'),
+      addProduct(other.token, 'Other Chain'),
+      addProduct(other.token, 'Other Anklet'),
+    ]);
+    await addOrder(other.token, otherProducts[0].id, '9876600011');
+    await addOrder(other.token, otherProducts[1].id, '9876600012');
+    await addOrder(other.token, otherProducts[2].id, '9876600013');
+    for (const phone of ['9876600014', '9876600015']) {
+      const response = await api('POST', `/api/store/${other.slug}/wants`, {
+        body: { name: 'Other Want', phone, request: 'Need a custom pendant please.', quantity: 1 },
+      });
+      assert.equal(response.status, 201, JSON.stringify(response.data));
+    }
+  });
+
+  after(async () => {
+    if (createdBusinessIds.length) {
+      const filter = { businessId: { $in: createdBusinessIds } };
+      await CustomerWant.deleteMany(filter);
+      await Order.deleteMany(filter);
+      await Product.deleteMany(filter);
+      await Customer.deleteMany(filter);
+      await OrderCounter.deleteMany(filter);
+      await Notification.deleteMany(filter);
+      await Subscription.deleteMany(filter);
+      await User.deleteMany(filter);
+      await Business.deleteMany({ _id: { $in: createdBusinessIds } });
+    }
+    if (server) await new Promise((resolve) => server.close(resolve));
+    if (mongoose.connection.readyState === 1) await mongoose.disconnect();
+  });
+
+  it('denies unauthenticated access to every admin endpoint', async () => {
+    for (const path of ['/api/admin/overview', '/api/admin/businesses', `/api/admin/businesses/${seller.businessId}`]) {
+      const response = await api('GET', path);
+      assert.equal(response.status, 401, path);
+      assert.equal(response.data.overview, undefined);
+      assert.equal(response.data.businesses, undefined);
+    }
+  });
+
+  it('forbids a normal seller from admin endpoints', async () => {
+    for (const path of ['/api/admin/overview', '/api/admin/businesses', `/api/admin/businesses/${seller.businessId}`]) {
+      const response = await api('GET', path, { token: seller.token });
+      assert.equal(response.status, 403, path);
+      assert.equal(response.data.overview, undefined);
+      assert.equal(response.data.businesses, undefined);
+      assert.equal(response.data.business, undefined);
+    }
+  });
+
+  it('revoking the flag in the database blocks an existing admin session', async () => {
+    const temp = await registerTenant('revoked');
+    await User.updateOne({ _id: temp.user._id }, { $set: { isPlatformAdmin: true } });
+    const allowed = await api('GET', '/api/admin/overview', { token: temp.token });
+    assert.equal(allowed.status, 200);
+    await User.updateOne({ _id: temp.user._id }, { $set: { isPlatformAdmin: false } });
+    const blocked = await api('GET', '/api/admin/overview', { token: temp.token });
+    assert.equal(blocked.status, 403);
+  });
+
+  it('lets an admin read the overview', async () => {
+    const response = await api('GET', '/api/admin/overview', { token: admin.token });
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    const { overview } = response.data;
+    const { totals } = overview;
+    assert.ok(totals.businesses >= 3);
+    assert.equal(
+      totals.active + totals.trial + totals.paymentRequired + totals.restricted,
+      totals.businesses
+    );
+    assert.equal(typeof overview.trialsEndingSoon.count, 'number');
+    assert.equal(overview.revenue.estimatedMrr, overview.revenue.activeSubscriptions * overview.revenue.pricePerMonth);
+    assert.ok(Array.isArray(overview.recentSignups));
+    assert.ok(overview.recentSignups.length > 0);
+    const serialized = JSON.stringify(overview);
+    assert.equal(serialized.includes('providerSubscriptionId'), false);
+    assert.equal(serialized.includes('passwordHash'), false);
+  });
+
+  it('lets an admin list and search businesses with bounded pages', async () => {
+    const listed = await api('GET', '/api/admin/businesses?limit=500', { token: admin.token });
+    assert.equal(listed.status, 200, JSON.stringify(listed.data));
+    assert.equal(listed.data.limit, 50);
+    assert.ok(listed.data.businesses.length <= 50);
+
+    const byEmail = await api('GET', `/api/admin/businesses?search=${encodeURIComponent(seller.email)}`, {
+      token: admin.token,
+    });
+    assert.equal(byEmail.status, 200);
+    assert.equal(byEmail.data.total, 1);
+    assert.equal(byEmail.data.businesses[0].id, seller.businessId);
+    assert.equal(byEmail.data.businesses[0].owner.email, seller.email);
+
+    const byName = await api('GET', `/api/admin/businesses?search=${encodeURIComponent(other.name)}`, {
+      token: admin.token,
+    });
+    assert.equal(byName.data.businesses.some((item) => item.id === other.businessId), true);
+
+    const regexy = await api('GET', `/api/admin/businesses?search=${encodeURIComponent('.*(')}`, {
+      token: admin.token,
+    });
+    assert.equal(regexy.status, 200);
+    assert.equal(regexy.data.total, 0);
+
+    const row = byEmail.data.businesses[0];
+    assert.equal(row.passwordHash, undefined);
+    assert.equal(row.paymentUpiId, undefined);
+    assert.equal(JSON.stringify(row).includes('providerSubscriptionId'), false);
+  });
+
+  it('returns business detail counts scoped to the requested business', async () => {
+    const response = await api('GET', `/api/admin/businesses/${seller.businessId}`, { token: admin.token });
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    const { business } = response.data;
+    assert.equal(business.id, seller.businessId);
+    assert.equal(business.owner.email, seller.email);
+    assert.equal(business.counts.products, 2);
+    assert.equal(business.counts.activeProducts, 2);
+    assert.equal(business.counts.orders, 1);
+    assert.equal(business.counts.customers, 1);
+    assert.equal(business.counts.customerRequests, 1);
+    assert.ok(business.lastActivity?.at);
+    assert.equal(business.subscription.accountStatus, 'trial');
+
+    const serialized = JSON.stringify(business);
+    assert.equal(serialized.includes(other.businessId), false);
+    assert.equal(serialized.includes(other.email), false);
+    assert.equal(serialized.includes('Other Ring'), false);
+    assert.equal(serialized.includes('providerSubscriptionId'), false);
+    assert.equal(serialized.includes('paymentUpiId'), false);
+
+    const otherDetail = await api('GET', `/api/admin/businesses/${other.businessId}`, { token: admin.token });
+    assert.equal(otherDetail.data.business.counts.products, 3);
+    assert.equal(otherDetail.data.business.counts.orders, 3);
+    assert.equal(otherDetail.data.business.counts.customerRequests, 2);
+  });
+
+  it('handles invalid and missing business ids safely', async () => {
+    const invalid = await api('GET', '/api/admin/businesses/not-an-id', { token: admin.token });
+    assert.equal(invalid.status, 404);
+    const missing = await api('GET', `/api/admin/businesses/${new mongoose.Types.ObjectId()}`, { token: admin.token });
+    assert.equal(missing.status, 404);
+  });
+
+  it('public registration cannot create an admin', async () => {
+    const attempt = await registerTenant('sneaky', { role: 'admin', isPlatformAdmin: true });
+    assert.equal(attempt.registered.data.user.isPlatformAdmin, false);
+    assert.equal(attempt.registered.data.user.role, 'owner');
+    const stored = await User.findOne({ email: attempt.email });
+    assert.equal(stored.isPlatformAdmin, false);
+    assert.equal(stored.role, 'owner');
+    const blocked = await api('GET', '/api/admin/overview', { token: attempt.token });
+    assert.equal(blocked.status, 403);
+  });
+
+  it('classifies subscription rows into admin account statuses', () => {
+    const now = new Date('2026-01-10T00:00:00Z');
+    assert.equal(accountStatus(null, now), 'payment_required');
+    assert.equal(accountStatus({ status: 'active' }, now), 'active');
+    assert.equal(accountStatus({ status: 'trialing', trialEndAt: new Date('2026-01-20') }, now), 'trial');
+    assert.equal(accountStatus({ status: 'trialing', trialEndAt: new Date('2026-01-01') }, now), 'payment_required');
+    assert.equal(accountStatus({ status: 'past_due' }, now), 'payment_required');
+    assert.equal(accountStatus({ status: 'incomplete' }, now), 'payment_required');
+    assert.equal(accountStatus({ status: 'halted' }, now), 'restricted');
+    assert.equal(accountStatus({ status: 'cancelled' }, now), 'restricted');
+  });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ExternalLink } from 'lucide-react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
@@ -19,6 +19,28 @@ const tabs = [
   'Customer payments',
   'Notifications',
 ];
+
+const TAB_ALIASES = {
+  profile: 'Business Profile',
+  'business-profile': 'Business Profile',
+  'business profile': 'Business Profile',
+  storefront: 'Storefront',
+  ordering: 'Ordering & Delivery',
+  delivery: 'Ordering & Delivery',
+  'ordering-delivery': 'Ordering & Delivery',
+  payments: 'Customer payments',
+  payment: 'Customer payments',
+  'customer-payments': 'Customer payments',
+  'customer payments': 'Customer payments',
+  notifications: 'Notifications',
+};
+
+function tabFromSearch(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (!key) return null;
+  if (tabs.includes(value)) return value;
+  return TAB_ALIASES[key] || null;
+}
 
 const emptyForm = {
   name: '',
@@ -79,9 +101,10 @@ function toForm(business) {
 export default function SettingsPage() {
   const { refresh } = useAuth();
   const { notify } = useOutletContext();
+  const [searchParams] = useSearchParams();
   const fileInput = useRef(null);
   const qrInput = useRef(null);
-  const [tab, setTab] = useState(tabs[0]);
+  const [tab, setTab] = useState(() => tabFromSearch(searchParams.get('tab')) || tabs[0]);
   const [form, setForm] = useState(emptyForm);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
@@ -91,6 +114,11 @@ export default function SettingsPage() {
   const [logoError, setLogoError] = useState('');
   const [qrError, setQrError] = useState('');
   const [upiPreviewQr, setUpiPreviewQr] = useState('');
+
+  useEffect(() => {
+    const nextTab = tabFromSearch(searchParams.get('tab'));
+    if (nextTab) setTab(nextTab);
+  }, [searchParams]);
 
   const sampleUpiUri = useMemo(() => {
     if (form.currency !== 'INR' || !isValidUpiId(form.paymentUpiId)) return '';

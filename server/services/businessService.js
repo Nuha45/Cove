@@ -3,7 +3,7 @@ const ApiError = require('../utils/ApiError');
 const { saveLogo } = require('../utils/businessLogo');
 const { savePaymentQr } = require('../utils/paymentQrImage');
 const { saveStorefrontCover } = require('../utils/storefrontCover');
-const { normalizeTheme, normalizeAccent } = require('../utils/storefrontAppearance');
+const { normalizeTheme, normalizeAccent, normalizeCoverFocus } = require('../utils/storefrontAppearance');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 
 function asBoolean(value, fallback) {
@@ -81,6 +81,16 @@ async function updateSettings(businessId, input) {
       input.storefrontCoverImage,
       business.storefrontCoverImage || ''
     );
+    if (!business.storefrontCoverImage) {
+      business.storefrontCoverFocusX = 50;
+      business.storefrontCoverFocusY = 50;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontCoverFocusX')) {
+    business.storefrontCoverFocusX = normalizeCoverFocus(input.storefrontCoverFocusX);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontCoverFocusY')) {
+    business.storefrontCoverFocusY = normalizeCoverFocus(input.storefrontCoverFocusY);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentQrEnabled')) {
     business.paymentQrEnabled = asBoolean(input.paymentQrEnabled, business.paymentQrEnabled);

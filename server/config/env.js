@@ -46,15 +46,68 @@ if (jwtSecret.length < 32 || jwtSecret.includes('replace-with')) {
 }
 
 const trialDays = Number(process.env.COVE_TRIAL_DAYS || 30);
+const nodeEnv = process.env.NODE_ENV || 'development';
+const isProduction = nodeEnv === 'production';
+
+function parseOrigins(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+if (isProduction && !process.env.CLIENT_ORIGIN) {
+  throw new Error('CLIENT_ORIGIN is required in production (the public URL of the Cove frontend).');
+}
+const clientOrigins = parseOrigins(process.env.CLIENT_ORIGIN || 'http://localhost:5173');
+
+// Number of reverse-proxy hops in front of the API (hosting load balancer, CDN).
+function parseTrustProxy(value) {
+  if (value === undefined || value === '') return isProduction ? 1 : false;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  const hops = Number(value);
+  if (Number.isInteger(hops) && hops >= 0) return hops;
+  throw new Error('TRUST_PROXY must be true, false, or a number of proxy hops (for example 1).');
+}
+
+function parseSameSite(value) {
+  if (!value) return isProduction ? 'none' : 'lax';
+  const normalized = String(value).toLowerCase();
+  if (!['lax', 'strict', 'none'].includes(normalized)) {
+    throw new Error('COOKIE_SAME_SITE must be lax, strict, or none.');
+  }
+  return normalized;
+}
+
+function parseSiteUrl(value) {
+  if (!value) return '';
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('PUBLIC_SITE_URL must be a full URL like https://shop.example.com');
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('PUBLIC_SITE_URL must start with https:// (or http:// for local testing).');
+  }
+  return url.origin;
+}
 
 module.exports = {
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
+  isProduction,
   port: Number(process.env.PORT) || 5000,
   mongoUri,
   jwtSecret,
   jwtExpiresIn: jwtDuration.expiresIn,
   jwtMaxAgeMs: jwtDuration.maxAgeMs,
-  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  clientOrigin: clientOrigins[0],
+  clientOrigins,
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  cookieSameSite: parseSameSite(process.env.COOKIE_SAME_SITE),
+  // Public frontend origin used for sitemap URLs. Sitemap is disabled until this is set.
+  publicSiteUrl: parseSiteUrl(process.env.PUBLIC_SITE_URL),
   // Optional until Razorpay is configured. Billing endpoints fail clearly without them.
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',
@@ -91,5 +144,5 @@ module.exports = {
     // When true (dev only), password-reset meta may include the reset URL for local debugging.
     debugLinks: process.env.EMAIL_DEBUG_LINKS === 'true' && (process.env.NODE_ENV || 'development') !== 'production',
   },
-  appUrl: process.env.APP_URL || process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  appUrl: process.env.APP_URL || clientOrigins[0],
 };

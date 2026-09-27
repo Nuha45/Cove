@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import GuestRoute from './GuestRoute';
 import ProtectedRoute from './ProtectedRoute';
+import AdminRoute from './AdminRoute';
 import DashboardLayout from '../layouts/DashboardLayout';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
@@ -15,8 +16,8 @@ import OrderDetailPage from '../pages/OrderDetailPage';
 import SettingsPage from '../pages/SettingsPage';
 import StorefrontPage from '../pages/StorefrontPage';
 import BillingPage from '../pages/BillingPage';
-import MarketingPage from '../pages/MarketingPage';
 import AnalyticsPage from '../pages/AnalyticsPage';
+import HelpPage from '../pages/HelpPage';
 
 const StoreShell = lazy(() => import('../pages/store/StoreShell'));
 const StoreHomePage = lazy(() => import('../pages/store/StoreHomePage'));
@@ -30,6 +31,10 @@ const CustomersPage = lazy(() => import('../pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('../pages/CustomerDetailPage'));
 const CustomerWantsPage = lazy(() => import('../pages/CustomerWantsPage'));
 const CustomerWantDetailPage = lazy(() => import('../pages/CustomerWantDetailPage'));
+const AdminLayout = lazy(() => import('../layouts/AdminLayout'));
+const AdminOverviewPage = lazy(() => import('../pages/admin/AdminOverviewPage'));
+const AdminBusinessesPage = lazy(() => import('../pages/admin/AdminBusinessesPage'));
+const AdminBusinessDetailPage = lazy(() => import('../pages/admin/AdminBusinessDetailPage'));
 
 function StoreFallback() {
   return <div className="store-status">Opening the shop...</div>;
@@ -77,11 +82,21 @@ export default function AppRoutes() {
           <Route path="/customers/:id" element={<Suspense fallback={<PageFallback />}><CustomerDetailPage /></Suspense>} />
           <Route path="/customer-wants" element={<Suspense fallback={<PageFallback />}><CustomerWantsPage /></Suspense>} />
           <Route path="/customer-wants/:id" element={<Suspense fallback={<PageFallback />}><CustomerWantDetailPage /></Suspense>} />
-          <Route path="/marketing" element={<MarketingPage />} />
+          {/* AI Marketing is hidden for now; MarketingPage and the /api/marketing endpoints are kept. */}
+          <Route path="/marketing" element={<Navigate to="/dashboard" replace />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/billing" element={<BillingPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+
+        <Route element={<AdminRoute />}>
+          <Route element={<Suspense fallback={<PageFallback />}><AdminLayout /></Suspense>}>
+            <Route path="/admin" element={<Suspense fallback={<PageFallback />}><AdminOverviewPage /></Suspense>} />
+            <Route path="/admin/businesses" element={<Suspense fallback={<PageFallback />}><AdminBusinessesPage /></Suspense>} />
+            <Route path="/admin/businesses/:id" element={<Suspense fallback={<PageFallback />}><AdminBusinessDetailPage /></Suspense>} />
+          </Route>
         </Route>
       </Route>
 

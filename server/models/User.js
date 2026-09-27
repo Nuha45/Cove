@@ -26,6 +26,11 @@ const userSchema = new mongoose.Schema(
       enum: ['owner'],
       default: 'owner',
     },
+    // Cove platform operator. Only settable via server/scripts/promote-admin.js, never via the API.
+    isPlatformAdmin: {
+      type: Boolean,
+      default: false,
+    },
     // Every seller belongs to one business. Later staff accounts can share this id.
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -64,6 +69,7 @@ userSchema.methods.toPublic = function toPublic() {
     name: this.name,
     email: this.email,
     role: this.role,
+    isPlatformAdmin: this.isPlatformAdmin === true,
   };
 };
 

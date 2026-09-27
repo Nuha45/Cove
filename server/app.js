@@ -12,9 +12,11 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 
 app.disable('x-powered-by');
+// Rate limits and secure cookies rely on the real client IP/protocol behind a hosting proxy.
+app.set('trust proxy', env.trustProxy);
 app.use(helmet());
 app.use(cors({
-  origin: env.clientOrigin,
+  origin: env.clientOrigins.length === 1 ? env.clientOrigins[0] : env.clientOrigins,
   credentials: true,
 }));
 
@@ -23,7 +25,10 @@ app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoute
 
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+// Product, logo, and cover images are embedded by the frontend, which may run on another origin.
+app.use('/uploads', helmet.crossOriginResourcePolicy({ policy: 'cross-origin' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  maxAge: env.isProduction ? '7d' : 0,
   index: false,
   dotfiles: 'ignore',
   fallthrough: false,

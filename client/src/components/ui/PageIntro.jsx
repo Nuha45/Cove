@@ -4,7 +4,7 @@ export default function PageIntro({ eyebrow, title, subtitle, action }) {
       <div>
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
-        {subtitle ? <p className="subtitle">{subtitle}</p> : null}
+        {subtitle ? <div className="subtitle">{subtitle}</div> : null}
       </div>
       {action}
     </div>

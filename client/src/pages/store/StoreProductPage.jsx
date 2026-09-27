@@ -6,6 +6,36 @@ import { getStoreProduct } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
+import { absoluteAsset, absoluteUrl, productJsonLd, truncate, useSeo } from '../../utils/seo';
+
+function productSeo(state, product, business, slug) {
+  const shopName = business?.name || 'Shop';
+  if (state === 'missing' || state === 'error') {
+    return {
+      title: `${state === 'missing' ? 'Product not found' : 'Product unavailable'} · ${shopName}`,
+      robots: 'noindex, nofollow',
+      siteName: shopName,
+    };
+  }
+  if (state !== 'ready' || !product) return null;
+
+  const canonical = absoluteUrl(`/store/${business?.slug || slug}/product/${product.id}`);
+  const images = (product.images || []).map((src) => absoluteAsset(mediaUrl(src))).filter(Boolean);
+  const description = truncate(
+    product.description
+      || `${product.name}${product.category ? ` (${product.category})` : ''} from ${shopName}. Order online.`
+  );
+  return {
+    title: `${product.name} · ${shopName}`,
+    description,
+    canonical,
+    image: images[0] || '',
+    imageAlt: product.name,
+    type: 'product',
+    siteName: shopName,
+    jsonLd: productJsonLd(product, business, { url: canonical, images }),
+  };
+}
 
 export default function StoreProductPage() {
   const { slug, productId } = useParams();
@@ -19,6 +49,8 @@ export default function StoreProductPage() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [activeImage, setActiveImage] = useState(0);
+
+  useSeo(productSeo(state, product, business, slug));
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +88,7 @@ export default function StoreProductPage() {
     setNote('Added to cart.');
   }
 
-  if (state === 'loading') return <div className="store-panel">Loading product...</div>;
+  if (state === 'loading') return <div className="store-panel" role="status">Loading product...</div>;
   if (state === 'missing') {
     return (
       <div className="store-panel">
@@ -66,7 +98,7 @@ export default function StoreProductPage() {
       </div>
     );
   }
-  if (state === 'error') return <div className="store-panel form-error">{error}</div>;
+  if (state === 'error') return <div className="store-panel form-error" role="alert">{error}</div>;
 
   const images = product.images?.length ? product.images : [];
   const max = Math.max(1, product.stockQuantity || 0);
@@ -83,13 +115,15 @@ export default function StoreProductPage() {
             <img
               className="store-gallery-main"
               src={mediaUrl(images[activeImage] || images[0])}
-              alt={product.name}
+              alt={images.length > 1
+                ? `${product.name}, image ${activeImage + 1} of ${images.length}`
+                : product.name}
             />
           ) : (
             <span className="store-thumb-fallback large" aria-hidden="true"><Package size={32} /></span>
           )}
           {images.length > 1 ? (
-            <div className="store-thumbs" role="list">
+            <div className="store-thumbs" role="group" aria-label="Product images">
               {images.map((image, index) => (
                 <button
                   key={image}
@@ -99,7 +133,7 @@ export default function StoreProductPage() {
                   aria-label={`Show image ${index + 1} of ${images.length}`}
                   aria-pressed={index === activeImage}
                 >
-                  <img src={mediaUrl(image)} alt="" />
+                  <img src={mediaUrl(image)} alt="" loading="lazy" decoding="async" />
                 </button>
               ))}
             </div>

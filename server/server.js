@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const env = require('./config/env');
 const connectDB = require('./config/db');
 const app = require('./app');
@@ -5,10 +6,25 @@ const emailService = require('./services/emailService');
 
 connectDB()
   .then(() => {
-    app.listen(env.port, () => {
-      console.log(`API listening on http://localhost:${env.port}`);
+    const server = app.listen(env.port, () => {
+      console.log(`API listening on port ${env.port} (${env.nodeEnv})`);
       emailService.logEmailConfig();
     });
+
+    // Hosting platforms send SIGTERM on deploy/restart; finish in-flight requests first.
+    let shuttingDown = false;
+    function shutdown(signal) {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`${signal} received, shutting down.`);
+      const forceExit = setTimeout(() => process.exit(1), 10000);
+      forceExit.unref();
+      server.close(() => {
+        mongoose.disconnect().finally(() => process.exit(0));
+      });
+    }
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   })
   .catch((err) => {
     console.error('Could not start the API.');

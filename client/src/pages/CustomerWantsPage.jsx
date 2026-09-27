@@ -68,7 +68,7 @@ export default function CustomerWantsPage() {
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Customer Wants"
-        subtitle="Requests from people who could not find what they needed in your shop."
+        subtitle="See what customers are asking for, even when you don’t currently sell it."
       />
 
       <section className="card table-card">
@@ -115,7 +115,7 @@ export default function CustomerWantsPage() {
               title={emptyBecauseFilter ? 'No matching requests' : 'No requests yet'}
               text={emptyBecauseFilter
                 ? 'Try a different search or filter.'
-                : 'When a customer asks for something from your storefront, it will show up here.'}
+                : 'Customer requests will appear here when shoppers tell you what they’re looking for.'}
             />
             {!emptyBecauseFilter ? (
               <p className="muted customer-hint">

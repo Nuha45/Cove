@@ -1,17 +1,62 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/layout/Sidebar';
 import TopBar from '../components/layout/TopBar';
+import OnboardingModal from '../components/onboarding/OnboardingModal';
 import { getErrorMessage } from '../utils/errors';
+import {
+  getOnboardingState,
+  markOnboardingFinished,
+  resetOnboarding,
+  saveOnboardingState,
+  shouldAutoOpenOnboarding,
+} from '../utils/onboarding';
+import { listProducts } from '../services/productService';
+import { copyText, storefrontUrl } from '../utils/storefront';
+
+const OPEN_FLAG = 'cove-open-onboarding';
 
 export default function DashboardLayout() {
   const { user, business, logout } = useAuth();
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState('');
+  const [activeProductCount, setActiveProductCount] = useState(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+  const businessId = business?.id;
+
+  const openOnboarding = useCallback((options = {}) => {
+    if (options.reset && !businessId) return;
+
+    if (businessId && options.reset) {
+      resetOnboarding(businessId);
+    }
+
+    const nextStep = Number.isFinite(options.step)
+      ? Math.max(0, Number(options.step))
+      : (businessId ? getOnboardingState(businessId).step : 0);
+
+    if (businessId) {
+      saveOnboardingState(businessId, {
+        step: nextStep,
+        completed: false,
+        dismissed: false,
+      });
+    }
+
+    setOnboardingStep(nextStep);
+    setOnboardingOpen(true);
+
+    try {
+      sessionStorage.removeItem(OPEN_FLAG);
+    } catch {
+      // ignore
+    }
+  }, [businessId]);
 
   useEffect(() => {
     setMobileNav(false);
@@ -28,9 +73,82 @@ export default function DashboardLayout() {
     };
   }, [mobileNav]);
 
+  useEffect(() => {
+    if (!businessId) return undefined;
+    let cancelled = false;
+    listProducts({ status: 'Active', limit: 1 })
+      .then((result) => {
+        if (cancelled) return;
+        setActiveProductCount(Number(result.total) || (result.products?.length || 0));
+      })
+      .catch(() => {
+        if (!cancelled) setActiveProductCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [businessId, location.pathname]);
+
+  useEffect(() => {
+    if (!businessId || activeProductCount === null) return;
+
+    let forceOpen = false;
+    try {
+      forceOpen = sessionStorage.getItem(OPEN_FLAG) === '1';
+    } catch {
+      forceOpen = false;
+    }
+
+    if (forceOpen) {
+      try {
+        sessionStorage.removeItem(OPEN_FLAG);
+      } catch {
+        // ignore
+      }
+      openOnboarding({ reset: true, step: 0 });
+      return;
+    }
+
+    if (shouldAutoOpenOnboarding(businessId, { activeProductCount })) {
+      const state = getOnboardingState(businessId);
+      setOnboardingStep(state.step || 0);
+      setOnboardingOpen(true);
+    }
+  }, [businessId, activeProductCount, location.pathname, openOnboarding]);
+
   function notify(text) {
     setToast(text);
     window.setTimeout(() => setToast(''), 2600);
+  }
+
+  const handleStepChange = useCallback((nextStep) => {
+    setOnboardingStep(nextStep);
+    if (businessId) saveOnboardingState(businessId, { step: nextStep });
+  }, [businessId]);
+
+  function closeOnboarding() {
+    if (businessId) markOnboardingFinished(businessId, 'dismissed');
+    setOnboardingOpen(false);
+  }
+
+  function finishOnboarding() {
+    if (businessId) markOnboardingFinished(businessId, 'completed');
+    setOnboardingOpen(false);
+    if (location.pathname !== '/dashboard') navigate('/dashboard');
+  }
+
+  async function copyStorefrontLink() {
+    const url = storefrontUrl(business?.slug);
+    if (!url) {
+      notify('Your storefront link is not ready yet.');
+      return;
+    }
+    try {
+      await copyText(url);
+      notify('Storefront link copied.');
+    } catch {
+      notify('Could not copy the link. You can select it and copy manually.');
+    }
   }
 
   async function handleLogout() {
@@ -62,14 +180,30 @@ export default function DashboardLayout() {
       <main className="main">
         <TopBar onMenu={() => setMobileNav((open) => !open)} menuOpen={mobileNav} />
         <div className="content">
-          <Outlet context={{ notify }} />
+          <Outlet
+            context={{
+              notify,
+              openOnboarding,
+              activeProductCount: activeProductCount ?? 0,
+            }}
+          />
         </div>
       </main>
       {toast ? (
-        <div className="toast">
+        <div className="toast" role="status">
           <Check size={17} /> {toast}
         </div>
       ) : null}
+      <OnboardingModal
+        open={onboardingOpen}
+        step={onboardingStep}
+        business={business}
+        activeProductCount={activeProductCount ?? 0}
+        onStepChange={handleStepChange}
+        onClose={closeOnboarding}
+        onFinish={finishOnboarding}
+        onCopyLink={copyStorefrontLink}
+      />
     </div>
   );
 }

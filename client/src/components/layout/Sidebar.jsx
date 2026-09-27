@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown, LogOut, ShieldCheck } from 'lucide-react';
 import { navItems } from '../../routes/navItems';
 import { initials } from '../../utils/display';
 import CoveLogo from '../brand/CoveLogo';
@@ -34,6 +34,15 @@ export default function Sidebar({ business, businesses, user, open, onNavigate, 
             );
           })}
         </nav>
+
+        {user?.isPlatformAdmin === true ? (
+          <nav aria-label="Cove Admin" className="sidebar-admin-nav">
+            <NavLink to="/admin" onClick={onNavigate}>
+              <ShieldCheck size={18} />
+              <span>Cove Admin</span>
+            </NavLink>
+          </nav>
+        ) : null}
       </div>
 
       <div className="sidebar-bottom">

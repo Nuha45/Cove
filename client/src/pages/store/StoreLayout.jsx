@@ -6,7 +6,7 @@ import { initials } from '../../utils/display';
 import { mediaUrl } from '../../utils/media';
 import { appearanceFromBusiness } from '../../utils/storefrontAppearance';
 
-function StoreChrome({ business }) {
+function StoreChrome({ business, initialCatalog }) {
   const { slug } = useParams();
   const { count } = useCart();
   const shopName = business?.name || 'Shop';
@@ -18,6 +18,7 @@ function StoreChrome({ business }) {
       data-theme={appearance.theme}
       style={{ '--store-accent': appearance.accent }}
     >
+      <a className="skip-link" href="#store-content">Skip to content</a>
       <header className="store-top">
         <div className="store-top-inner">
           <Link className="store-brand" to={`/store/${slug}`}>
@@ -38,8 +39,8 @@ function StoreChrome({ business }) {
           </Link>
         </div>
       </header>
-      <main className="store-main">
-        <Outlet context={{ business }} />
+      <main className="store-main" id="store-content" tabIndex={-1}>
+        <Outlet context={{ business, initialCatalog }} />
       </main>
       <footer className="store-foot">
         <CoveLogo size={22} />
@@ -49,11 +50,11 @@ function StoreChrome({ business }) {
   );
 }
 
-export default function StoreLayout({ business }) {
+export default function StoreLayout({ business, initialCatalog }) {
   const { slug } = useParams();
   return (
     <CartProvider slug={slug}>
-      <StoreChrome business={business} />
+      <StoreChrome business={business} initialCatalog={initialCatalog} />
     </CartProvider>
   );
 }

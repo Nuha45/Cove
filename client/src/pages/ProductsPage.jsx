@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import ContextualHelp from '../components/ui/ContextualHelp';
 import ProductModal from '../components/products/ProductModal';
 import ArchiveDialog from '../components/products/ArchiveDialog';
 import { listProducts, updateProduct } from '../services/productService';
@@ -135,7 +136,12 @@ export default function ProductsPage() {
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Products"
-        subtitle="Manage your products in one simple place."
+        subtitle={(
+          <span className="subtitle-with-help">
+            Products are what customers see in your storefront.
+            <ContextualHelp text="Active products appear on your public shop. Drafts stay private until you publish them." />
+          </span>
+        )}
         action={
           <button className="primary" type="button" onClick={() => setAdding(true)}>
             <Plus size={17} /> Add product
@@ -201,14 +207,14 @@ export default function ProductsPage() {
         {loadState === 'ready' && products.length === 0 ? (
           <div className="panel-state">
             <EmptyState
-              title={emptyBecauseFilter ? 'No matching products' : 'No products yet'}
+              title={emptyBecauseFilter ? 'No matching products' : 'Your storefront is waiting for its first product'}
               text={emptyBecauseFilter
                 ? 'Try a different search or filter.'
-                : 'Add your first product to start building your catalog.'}
+                : 'Add your first product to start building your shop.'}
             />
             {!emptyBecauseFilter ? (
               <button className="primary" type="button" onClick={() => setAdding(true)}>
-                <Plus size={17} /> Add product
+                <Plus size={17} /> Add your first product
               </button>
             ) : null}
           </div>

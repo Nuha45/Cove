@@ -61,6 +61,7 @@ async function register(input) {
       email: input.email,
       passwordHash,
       role: 'owner',
+      isPlatformAdmin: false,
       businessId,
     });
     // One server-side trial per new business. Never trust client trial dates.

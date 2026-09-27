@@ -1,12 +1,22 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CircleDollarSign, ClipboardList, Heart, Package, Plus, ShoppingBag, Sparkles, Store, WalletCards } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import {
+  CircleDollarSign,
+  ClipboardList,
+  Heart,
+  Package,
+  Plus,
+  ShoppingBag,
+  Store,
+  WalletCards,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
 import SectionHead from '../components/ui/SectionHead';
 import StatCard from '../components/ui/StatCard';
 import EmptyState from '../components/ui/EmptyState';
 import Badge from '../components/ui/Badge';
+import GettingStartedCard from '../components/onboarding/GettingStartedCard';
 import { listOrders } from '../services/orderService';
 import { listProducts } from '../services/productService';
 import { listCustomerWants } from '../services/customerWantService';
@@ -14,9 +24,11 @@ import { formatEyebrowDate, formatPrice, greeting } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
 import { STATUS_TONE } from '../utils/orders';
 import { WANT_STATUS_TONE } from '../utils/customerWants';
+import { buildGettingStartedItems } from '../utils/onboarding';
 
 const LOW_STOCK_MAX = 2;
 const OPEN_WANT_STATUSES = ['New', 'In Progress'];
+const CHECKLIST_HIDE_PREFIX = 'cove-checklist-hidden:';
 
 function stockLabel(quantity) {
   const count = Number(quantity) || 0;
@@ -24,8 +36,17 @@ function stockLabel(quantity) {
   return `${count} in stock`;
 }
 
+function readChecklistHidden(businessId) {
+  try {
+    return window.localStorage.getItem(`${CHECKLIST_HIDE_PREFIX}${businessId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, business } = useAuth();
+  const { openOnboarding, activeProductCount } = useOutletContext();
   const navigate = useNavigate();
   const firstName = user?.name?.split(' ')[0] || 'there';
   const [summary, setSummary] = useState(null);
@@ -35,6 +56,11 @@ export default function DashboardPage() {
   const [wantError, setWantError] = useState('');
   const [lowStock, setLowStock] = useState(null);
   const [lowStockError, setLowStockError] = useState('');
+  const [checklistHidden, setChecklistHidden] = useState(() => readChecklistHidden(business?.id));
+
+  useEffect(() => {
+    setChecklistHidden(readChecklistHidden(business?.id));
+  }, [business?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +106,6 @@ export default function DashboardPage() {
         setWantError(getErrorMessage(err));
       });
 
-    // Default product list is Active + Draft (archived excluded). Tenant comes from the session cookie.
     listProducts({ limit: 24 })
       .then((result) => {
         if (cancelled) return;
@@ -102,18 +127,65 @@ export default function DashboardPage() {
     };
   }, []);
 
+  const gettingStartedItems = useMemo(
+    () => buildGettingStartedItems({ business, activeProductCount: activeProductCount || 0 }),
+    [business, activeProductCount],
+  );
+
+  const shopLive = business?.storefrontActive !== false && Boolean(business?.slug);
+
+  function hideChecklist() {
+    try {
+      window.localStorage.setItem(`${CHECKLIST_HIDE_PREFIX}${business?.id}`, '1');
+    } catch {
+      // ignore
+    }
+    setChecklistHidden(true);
+  }
+
+  function startTour() {
+    openOnboarding?.({ reset: true, step: 0 });
+  }
+
   return (
     <>
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title={greeting(firstName)}
-        subtitle="Here is what is happening with your business today."
+        subtitle={
+          shopLive
+            ? `${business?.name || 'Your shop'} is live. Here’s what needs your attention today.`
+            : `${business?.name || 'Your shop'} is paused. Turn it back on in Settings when you’re ready.`
+        }
         action={
           <button className="primary" type="button" onClick={() => navigate('/products', { state: { add: true } })}>
             <Plus size={17} /> Add product
           </button>
         }
       />
+
+      <div className="dashboard-status-row">
+        <div className={`dashboard-status-pill${shopLive ? ' live' : ''}`}>
+          <span className="dashboard-status-dot" aria-hidden="true" />
+          <span>{shopLive ? 'Storefront live' : 'Storefront paused'}</span>
+          {!shopLive ? (
+            <button type="button" onClick={() => navigate('/settings?tab=storefront')}>
+              Open Settings
+            </button>
+          ) : null}
+        </div>
+        <button className="secondary tiny" type="button" onClick={() => navigate('/help')}>
+          Need help?
+        </button>
+      </div>
+
+      {!checklistHidden ? (
+        <GettingStartedCard
+          items={gettingStartedItems}
+          onHide={hideChecklist}
+          onOpenTour={startTour}
+        />
+      ) : null}
 
       <div className="stats-grid">
         <StatCard
@@ -157,9 +229,17 @@ export default function DashboardPage() {
       <div className="dashboard-grid">
         <section className="card">
           <SectionHead title="Orders needing attention" action="View all orders" onAction={() => navigate('/orders')} />
-          {attention === null ? <p className="muted">Loading orders...</p> : null}
+          {attention === null ? <div className="skeleton-block" aria-hidden="true" /> : null}
           {attention?.length === 0 ? (
-            <EmptyState title="No orders yet" text="When a customer orders from your storefront, it will show up here." />
+            <EmptyState
+              title="No orders yet"
+              text="When customers order through your storefront, they’ll appear here automatically."
+              action={(
+                <button className="secondary" type="button" onClick={() => navigate('/storefront')}>
+                  Share your storefront
+                </button>
+              )}
+            />
           ) : null}
           {attention?.length > 0 ? (
             <div className="attention-list">
@@ -175,12 +255,17 @@ export default function DashboardPage() {
         </section>
         <section className="card">
           <SectionHead title="Customer requests" action="See all" onAction={() => navigate('/customer-wants')} />
-          {wants === null ? <p className="muted">Loading requests...</p> : null}
-          {wantError ? <p className="muted">{wantError}</p> : null}
+          {wants === null ? <div className="skeleton-block" aria-hidden="true" /> : null}
+          {wantError ? <p className="form-error">{wantError}</p> : null}
           {!wantError && wants?.length === 0 ? (
             <EmptyState
               title="No open requests"
-              text="New and in-progress requests from your storefront will appear here."
+              text="Customer requests will appear here when shoppers tell you what they’re looking for."
+              action={(
+                <button className="secondary" type="button" onClick={() => navigate('/help')}>
+                  How Customer Wants work
+                </button>
+              )}
             />
           ) : null}
           {!wantError && wants?.length > 0 ? (
@@ -200,10 +285,10 @@ export default function DashboardPage() {
       <div className="bottom-grid">
         <section className="card">
           <SectionHead title="Low stock" action="Manage products" onAction={() => navigate('/products')} />
-          {lowStock === null ? <p className="muted">Loading products...</p> : null}
-          {lowStockError ? <p className="muted">{lowStockError}</p> : null}
+          {lowStock === null ? <div className="skeleton-block" aria-hidden="true" /> : null}
+          {lowStockError ? <p className="form-error">{lowStockError}</p> : null}
           {!lowStockError && lowStock?.length === 0 ? (
-            <EmptyState title="No low-stock products" text="Products with 2 or fewer left in stock will show up here." />
+            <EmptyState title="Stock looks healthy" text="Products with 2 or fewer left will show up here." />
           ) : null}
           {!lowStockError && lowStock?.length > 0 ? (
             <div className="attention-list">
@@ -231,9 +316,7 @@ export default function DashboardPage() {
             <button type="button" onClick={() => navigate('/storefront')}><Store /> Share storefront</button>
             <button type="button" onClick={() => navigate('/orders/new')}><ClipboardList /> New order</button>
             <button type="button" onClick={() => navigate('/orders')}><ClipboardList /> View orders</button>
-            <button type="button" onClick={() => navigate('/customer-wants')}><Heart /> View customer wants</button>
-            <button type="button" onClick={() => navigate('/marketing')}><Sparkles /> Create marketing post</button>
-          </div>
+            <button type="button" onClick={() => navigate('/customer-wants')}><Heart /> View customer wants</button>          </div>
         </section>
       </div>
     </>

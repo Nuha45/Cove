@@ -113,6 +113,14 @@ const updateSettingsRules = [
       if (value.startsWith('data:image/') || value.startsWith('/uploads/covers/')) return true;
       throw new Error('Please upload a JPG, PNG, or WebP image.');
     }),
+  body('storefrontCoverFocusX')
+    .optional()
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('Cover position must be between 0 and 100.'),
+  body('storefrontCoverFocusY')
+    .optional()
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('Cover position must be between 0 and 100.'),
   optionalBoolean('paymentQrEnabled', 'QR payment setting is not valid.'),
   optionalBoolean('paymentLinkEnabled', 'Payment link setting is not valid.'),
   optionalBoolean('paymentInstructionsEnabled', 'Payment instructions setting is not valid.'),
@@ -183,6 +191,7 @@ const updateSettingsRules = [
       'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
       'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
       'storefrontTheme', 'storefrontAccent', 'storefrontCoverImage',
+      'storefrontCoverFocusX', 'storefrontCoverFocusY',
       ...PAYMENT_FIELDS,
     ];
     if (!allowed.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {

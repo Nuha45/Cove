@@ -25,11 +25,27 @@ export const STOREFRONT_ACCENTS = [
   { id: 'rose', value: '#b6504a', label: 'Rose' },
 ];
 
+export const DEFAULT_COVER_FOCUS = 50;
+
 export const DEFAULT_APPEARANCE = {
   theme: 'warm',
   accent: '#FF7A3D',
   coverImage: '',
+  coverFocusX: DEFAULT_COVER_FOCUS,
+  coverFocusY: DEFAULT_COVER_FOCUS,
 };
+
+export function normalizeCoverFocus(value, fallback = DEFAULT_COVER_FOCUS) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+export function coverObjectPosition(appearance = {}) {
+  const x = normalizeCoverFocus(appearance.coverFocusX);
+  const y = normalizeCoverFocus(appearance.coverFocusY);
+  return `${x}% ${y}%`;
+}
 
 export function normalizeAppearance(input = {}) {
   const themeIds = STOREFRONT_THEMES.map((item) => item.id);
@@ -44,6 +60,8 @@ export function normalizeAppearance(input = {}) {
     theme,
     accent,
     coverImage: typeof input.coverImage === 'string' ? input.coverImage : '',
+    coverFocusX: normalizeCoverFocus(input.coverFocusX),
+    coverFocusY: normalizeCoverFocus(input.coverFocusY),
   };
 }
 
@@ -52,5 +70,7 @@ export function appearanceFromBusiness(business) {
     theme: business?.storefrontTheme || business?.appearance?.theme,
     accent: business?.storefrontAccent || business?.appearance?.accent,
     coverImage: business?.storefrontCoverImage || business?.appearance?.coverImage || '',
+    coverFocusX: business?.storefrontCoverFocusX ?? business?.appearance?.coverFocusX,
+    coverFocusY: business?.storefrontCoverFocusY ?? business?.appearance?.coverFocusY,
   });
 }

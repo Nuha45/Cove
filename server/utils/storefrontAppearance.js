@@ -11,6 +11,7 @@ const STOREFRONT_ACCENTS = [
 ];
 
 const DEFAULT_STOREFRONT_ACCENT = '#FF7A3D';
+const DEFAULT_COVER_FOCUS = 50;
 const ACCENT_VALUES = new Set(STOREFRONT_ACCENTS.map((item) => item.value.toLowerCase()));
 
 function normalizeTheme(value) {
@@ -26,11 +27,20 @@ function normalizeAccent(value) {
   return DEFAULT_STOREFRONT_ACCENT;
 }
 
+/** Focal point inside the banner frame (0 = left/top, 100 = right/bottom). */
+function normalizeCoverFocus(value, fallback = DEFAULT_COVER_FOCUS) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
 function publicAppearance(doc) {
   return {
     theme: normalizeTheme(doc.storefrontTheme),
     accent: normalizeAccent(doc.storefrontAccent),
     coverImage: doc.storefrontCoverImage || '',
+    coverFocusX: normalizeCoverFocus(doc.storefrontCoverFocusX),
+    coverFocusY: normalizeCoverFocus(doc.storefrontCoverFocusY),
   };
 }
 
@@ -39,7 +49,9 @@ module.exports = {
   DEFAULT_STOREFRONT_THEME,
   STOREFRONT_ACCENTS,
   DEFAULT_STOREFRONT_ACCENT,
+  DEFAULT_COVER_FOCUS,
   normalizeTheme,
   normalizeAccent,
+  normalizeCoverFocus,
   publicAppearance,
 };

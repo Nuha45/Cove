@@ -6,20 +6,52 @@ import { getStorefront } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
-import { appearanceFromBusiness } from '../../utils/storefrontAppearance';
+import { absoluteAsset, absoluteUrl, storeJsonLd, truncate, useSeo } from '../../utils/seo';
+import { appearanceFromBusiness, coverObjectPosition } from '../../utils/storefrontAppearance';
+
+function peekInitialCatalog(ref, slug) {
+  const catalog = ref?.current;
+  return catalog && catalog.slug === slug ? catalog : null;
+}
+
+function storeSeo(business) {
+  const canonical = absoluteUrl(`/store/${business.slug}`);
+  const appearance = appearanceFromBusiness(business);
+  const logo = business.logo ? absoluteAsset(mediaUrl(business.logo)) : '';
+  const cover = appearance.coverImage ? absoluteAsset(mediaUrl(appearance.coverImage)) : '';
+  const place = business.city ? ` in ${business.city}` : '';
+  const tagline = business.category ? ` – ${business.category}${place}` : place;
+  const description = truncate(
+    business.description
+      || `Shop ${business.name}${business.category ? `, ${business.category.toLowerCase()}` : ''}${place}. Browse products and order online.`
+  );
+  return {
+    title: `${business.name}${tagline}`,
+    description,
+    canonical,
+    image: cover || logo,
+    imageAlt: business.name,
+    siteName: business.name,
+    jsonLd: storeJsonLd(business, { url: canonical, image: logo || cover }),
+  };
+}
 
 export default function StoreHomePage() {
   const { slug } = useParams();
-  const { business } = useOutletContext();
+  const { business, initialCatalog } = useOutletContext();
   const appearance = appearanceFromBusiness(business);
   const coverUrl = appearance.coverImage ? mediaUrl(appearance.coverImage) : '';
-  const [products, setProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [seeded] = useState(() => peekInitialCatalog(initialCatalog, slug));
+  const [products, setProducts] = useState(seeded?.products || []);
+  const [categories, setCategories] = useState(seeded?.categories || []);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
-  const [state, setState] = useState('loading');
+  const [state, setState] = useState(seeded ? 'ready' : 'loading');
   const [error, setError] = useState('');
+  const [skipFetch, setSkipFetch] = useState(Boolean(seeded));
+
+  useSeo(storeSeo(business));
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(search.trim()), 300);
@@ -27,6 +59,12 @@ export default function StoreHomePage() {
   }, [search]);
 
   useEffect(() => {
+    if (skipFetch) {
+      // Later visits to the home page fetch fresh stock instead of reusing the shell's first load.
+      if (initialCatalog) initialCatalog.current = null;
+      setSkipFetch(false);
+      return undefined;
+    }
     let cancelled = false;
 
     async function load() {
@@ -68,22 +106,30 @@ export default function StoreHomePage() {
 
   return (
     <>
-      <section
-        className={`store-hero${coverUrl ? ' has-cover' : ''}`}
-        style={coverUrl ? { '--store-cover': `url("${coverUrl}")` } : undefined}
-      >
-        <p className="eyebrow">{business.category || 'SHOP'}</p>
-        <h1>{business.name}</h1>
-        <p className="store-hero-lead">
-          {business.description || 'Browse the collection and place your order here.'}
-        </p>
-        {metaBits.length ? (
-          <div className="store-hero-meta">
-            {metaBits.map((bit) => (
-              <small key={bit}>{bit}</small>
-            ))}
+      <section className={`store-hero${coverUrl ? ' has-cover' : ''}`}>
+        {coverUrl ? (
+          <div className="store-hero-media" aria-hidden="true">
+            <img
+              src={coverUrl}
+              alt=""
+              style={{ objectPosition: coverObjectPosition(appearance) }}
+            />
           </div>
         ) : null}
+        <div className="store-hero-copy">
+          <p className="eyebrow">{business.category || 'SHOP'}</p>
+          <h1>{business.name}</h1>
+          <p className="store-hero-lead">
+            {business.description || 'Browse the collection and place your order here.'}
+          </p>
+          {metaBits.length ? (
+            <div className="store-hero-meta">
+              {metaBits.map((bit) => (
+                <small key={bit}>{bit}</small>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <aside className="store-want-cta">
@@ -132,8 +178,8 @@ export default function StoreHomePage() {
           </div>
         </div>
 
-        {state === 'loading' ? <div className="store-panel">Loading products...</div> : null}
-        {state === 'error' ? <div className="store-panel form-error">{error}</div> : null}
+        {state === 'loading' ? <div className="store-panel" role="status">Loading products...</div> : null}
+        {state === 'error' ? <div className="store-panel form-error" role="alert">{error}</div> : null}
 
         {state === 'ready' && products.length === 0 ? (
           <div className="store-panel">
@@ -186,5 +232,6 @@ function ProductImage({ product }) {
       </span>
     );
   }
-  return <img src={mediaUrl(src)} alt={product.name || 'Product'} />;
+  // The card link already announces the product name.
+  return <img src={mediaUrl(src)} alt="" loading="lazy" decoding="async" />;
 }

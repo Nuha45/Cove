@@ -108,6 +108,19 @@ const businessSchema = new mongoose.Schema(
       maxlength: 260,
       default: '',
     },
+    // Focal point for cover crop (object-position). 0–100, default center.
+    storefrontCoverFocusX: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 50,
+    },
+    storefrontCoverFocusY: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 50,
+    },
     // Seller-controlled customer payment methods. Cove never collects these funds.
     paymentQrEnabled: {
       type: Boolean,
@@ -228,6 +241,8 @@ businessSchema.methods.toPublic = function toPublic() {
     storefrontTheme: appearance.theme,
     storefrontAccent: appearance.accent,
     storefrontCoverImage: appearance.coverImage,
+    storefrontCoverFocusX: appearance.coverFocusX,
+    storefrontCoverFocusY: appearance.coverFocusY,
     appearance,
     ...paymentSettings(this),
   };

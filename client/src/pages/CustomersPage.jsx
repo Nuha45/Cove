@@ -97,7 +97,7 @@ export default function CustomersPage() {
               title={emptyBecauseFilter ? 'No matching customers' : 'No customers yet'}
               text={emptyBecauseFilter
                 ? 'Try a different search.'
-                : 'When someone orders from your storefront, they will show up here.'}
+                : 'Your customer list will grow as orders come in.'}
             />
             {!emptyBecauseFilter ? (
               <p className="muted customer-hint">
