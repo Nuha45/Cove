@@ -7,8 +7,6 @@ import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
 import { absoluteAsset, absoluteUrl, storeJsonLd, truncate, useSeo } from '../../utils/seo';
-import { appearanceFromBusiness, coverObjectPosition } from '../../utils/storefrontAppearance';
-
 function peekInitialCatalog(ref, slug) {
   const catalog = ref?.current;
   return catalog && catalog.slug === slug ? catalog : null;
@@ -16,9 +14,7 @@ function peekInitialCatalog(ref, slug) {
 
 function storeSeo(business) {
   const canonical = absoluteUrl(`/store/${business.slug}`);
-  const appearance = appearanceFromBusiness(business);
   const logo = business.logo ? absoluteAsset(mediaUrl(business.logo)) : '';
-  const cover = appearance.coverImage ? absoluteAsset(mediaUrl(appearance.coverImage)) : '';
   const place = business.city ? ` in ${business.city}` : '';
   const tagline = business.category ? ` – ${business.category}${place}` : place;
   const description = truncate(
@@ -29,18 +25,16 @@ function storeSeo(business) {
     title: `${business.name}${tagline}`,
     description,
     canonical,
-    image: cover || logo,
+    image: logo,
     imageAlt: business.name,
     siteName: business.name,
-    jsonLd: storeJsonLd(business, { url: canonical, image: logo || cover }),
+    jsonLd: storeJsonLd(business, { url: canonical, image: logo }),
   };
 }
 
 export default function StoreHomePage() {
   const { slug } = useParams();
   const { business, initialCatalog } = useOutletContext();
-  const appearance = appearanceFromBusiness(business);
-  const coverUrl = appearance.coverImage ? mediaUrl(appearance.coverImage) : '';
   const [seeded] = useState(() => peekInitialCatalog(initialCatalog, slug));
   const [products, setProducts] = useState(seeded?.products || []);
   const [categories, setCategories] = useState(seeded?.categories || []);
@@ -106,16 +100,7 @@ export default function StoreHomePage() {
 
   return (
     <>
-      <section className={`store-hero${coverUrl ? ' has-cover' : ''}`}>
-        {coverUrl ? (
-          <div className="store-hero-media" aria-hidden="true">
-            <img
-              src={coverUrl}
-              alt=""
-              style={{ objectPosition: coverObjectPosition(appearance) }}
-            />
-          </div>
-        ) : null}
+      <section className="store-hero">
         <div className="store-hero-copy">
           <p className="eyebrow">{business.category || 'SHOP'}</p>
           <h1>{business.name}</h1>

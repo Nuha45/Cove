@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Monitor, Package, Smartphone } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -12,22 +12,15 @@ import { mediaUrl } from '../utils/media';
 import { copyText, storefrontPath, storefrontUrl } from '../utils/storefront';
 import {
   DEFAULT_APPEARANCE,
-  DEFAULT_COVER_FOCUS,
   STOREFRONT_ACCENTS,
   STOREFRONT_THEMES,
   appearanceFromBusiness,
-  coverObjectPosition,
   normalizeAppearance,
-  normalizeCoverFocus,
 } from '../utils/storefrontAppearance';
-
-const COVER_MAX_BYTES = 450 * 1024;
 
 export default function StorefrontPage() {
   const { business, refresh } = useAuth();
   const { notify } = useOutletContext();
-  const coverInputId = useId();
-  const coverInputRef = useRef(null);
 
   const [copying, setCopying] = useState(false);
   const [products, setProducts] = useState([]);
@@ -36,7 +29,6 @@ export default function StorefrontPage() {
   const [viewport, setViewport] = useState('desktop');
   const [draft, setDraft] = useState(() => appearanceFromBusiness(business));
   const [saved, setSaved] = useState(() => appearanceFromBusiness(business));
-  const [coverError, setCoverError] = useState('');
   const [formError, setFormError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -45,11 +37,7 @@ export default function StorefrontPage() {
   const url = storefrontUrl(slug);
   const path = storefrontPath(slug);
   const currency = business?.currency || 'INR';
-  const dirty = draft.theme !== saved.theme
-    || draft.accent !== saved.accent
-    || draft.coverImage !== saved.coverImage
-    || draft.coverFocusX !== saved.coverFocusX
-    || draft.coverFocusY !== saved.coverFocusY;
+  const dirty = draft.theme !== saved.theme || draft.accent !== saved.accent;
 
   useEffect(() => {
     const next = appearanceFromBusiness(business);
@@ -58,14 +46,8 @@ export default function StorefrontPage() {
   }, [
     business?.storefrontTheme,
     business?.storefrontAccent,
-    business?.storefrontCoverImage,
-    business?.storefrontCoverFocusX,
-    business?.storefrontCoverFocusY,
     business?.appearance?.theme,
     business?.appearance?.accent,
-    business?.appearance?.coverImage,
-    business?.appearance?.coverFocusX,
-    business?.appearance?.coverFocusY,
   ]);
 
   useEffect(() => {
@@ -111,61 +93,14 @@ export default function StorefrontPage() {
     }
   }
 
-  function onCoverSelected(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    setCoverError('');
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setCoverError('Please upload a JPG, PNG, or WebP image.');
-      return;
-    }
-    if (file.size > COVER_MAX_BYTES) {
-      setCoverError('Please use an image under 450KB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft((current) => ({
-        ...current,
-        coverImage: String(reader.result || ''),
-        coverFocusX: DEFAULT_COVER_FOCUS,
-        coverFocusY: DEFAULT_COVER_FOCUS,
-      }));
-    };
-    reader.onerror = () => setCoverError('That image could not be read.');
-    reader.readAsDataURL(file);
-  }
-
-  function clearCover() {
-    setDraft((current) => ({
-      ...current,
-      coverImage: '',
-      coverFocusX: DEFAULT_COVER_FOCUS,
-      coverFocusY: DEFAULT_COVER_FOCUS,
-    }));
-  }
-
-  function setCoverFocus(next) {
-    setDraft((current) => ({
-      ...current,
-      coverFocusX: normalizeCoverFocus(next.x ?? current.coverFocusX),
-      coverFocusY: normalizeCoverFocus(next.y ?? current.coverFocusY),
-    }));
-  }
-
   async function saveAppearance() {
     setSaving(true);
     setFormError('');
     setFieldErrors({});
-    setCoverError('');
     try {
       const result = await updateBusinessSettings({
         storefrontTheme: draft.theme,
         storefrontAccent: draft.accent,
-        storefrontCoverImage: draft.coverImage,
-        storefrontCoverFocusX: draft.coverFocusX,
-        storefrontCoverFocusY: draft.coverFocusY,
       });
       const next = appearanceFromBusiness(result.business);
       setDraft(next);
@@ -175,7 +110,6 @@ export default function StorefrontPage() {
     } catch (err) {
       const nextFields = getFieldErrors(err);
       setFieldErrors(nextFields);
-      if (nextFields.storefrontCoverImage) setCoverError(nextFields.storefrontCoverImage);
       setFormError(getErrorMessage(err));
       notify(getErrorMessage(err));
     } finally {
@@ -186,7 +120,6 @@ export default function StorefrontPage() {
   async function resetAppearance() {
     const next = normalizeAppearance(DEFAULT_APPEARANCE);
     setDraft(next);
-    setCoverError('');
     setFormError('');
     setFieldErrors({});
     setSaving(true);
@@ -194,9 +127,6 @@ export default function StorefrontPage() {
       const result = await updateBusinessSettings({
         storefrontTheme: next.theme,
         storefrontAccent: next.accent,
-        storefrontCoverImage: '',
-        storefrontCoverFocusX: DEFAULT_COVER_FOCUS,
-        storefrontCoverFocusY: DEFAULT_COVER_FOCUS,
       });
       const savedNext = appearanceFromBusiness(result.business);
       setDraft(savedNext);
@@ -245,7 +175,7 @@ export default function StorefrontPage() {
         <div className="storefront-customize-head">
           <div>
             <p className="eyebrow">CUSTOMIZE STOREFRONT</p>
-            <h2>Theme, accent, and cover</h2>
+            <h2>Theme and accent</h2>
             <p className="muted">
               Your logo, shop name, and profile details stay as set in Settings.
               Choose a curated look, then save to publish it on your public store.
@@ -315,53 +245,6 @@ export default function StorefrontPage() {
                 <span className="field-error">{fieldErrors.storefrontAccent}</span>
               ) : null}
             </fieldset>
-
-            <div className="storefront-cover-field">
-              <div className="storefront-cover-copy">
-                <strong>Cover image</strong>
-                <p className="muted">
-                  Optional banner for your shop intro. JPG, PNG, or WebP under 450KB.
-                  Drag to keep the important part in view before you save.
-                </p>
-                {coverError ? <span className="field-error">{coverError}</span> : null}
-              </div>
-
-              <CoverFocusPreview
-                src={draft.coverImage ? mediaUrl(draft.coverImage) : ''}
-                focusX={draft.coverFocusX}
-                focusY={draft.coverFocusY}
-                onFocusChange={setCoverFocus}
-              />
-
-              <div className="logo-actions">
-                <button className="secondary" type="button" onClick={() => coverInputRef.current?.click()}>
-                  {draft.coverImage ? 'Replace cover' : 'Upload cover'}
-                </button>
-                {draft.coverImage ? (
-                  <button className="secondary" type="button" onClick={clearCover}>
-                    Remove
-                  </button>
-                ) : null}
-                {draft.coverImage ? (
-                  <button
-                    className="secondary"
-                    type="button"
-                    onClick={() => setCoverFocus({ x: DEFAULT_COVER_FOCUS, y: DEFAULT_COVER_FOCUS })}
-                  >
-                    Center
-                  </button>
-                ) : null}
-                <input
-                  id={coverInputId}
-                  ref={coverInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="product-file-input"
-                  hidden
-                  onChange={onCoverSelected}
-                />
-              </div>
-            </div>
           </div>
 
           <div className="storefront-preview-pane">
@@ -403,124 +286,9 @@ export default function StorefrontPage() {
   );
 }
 
-function CoverFocusPreview({ src, focusX, focusY, onFocusChange }) {
-  const frameRef = useRef(null);
-  const dragRef = useRef(null);
-  const onFocusChangeRef = useRef(onFocusChange);
-  const [dragging, setDragging] = useState(false);
-
-  useEffect(() => {
-    onFocusChangeRef.current = onFocusChange;
-  }, [onFocusChange]);
-
-  useEffect(() => {
-    if (!dragging) return undefined;
-
-    function onMove(event) {
-      const frame = frameRef.current;
-      const drag = dragRef.current;
-      if (!frame || !drag) return;
-      const rect = frame.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-      const nextX = normalizeCoverFocus(drag.startX - ((event.clientX - drag.pointerX) / rect.width) * 100);
-      const nextY = normalizeCoverFocus(drag.startY - ((event.clientY - drag.pointerY) / rect.height) * 100);
-      onFocusChangeRef.current({ x: nextX, y: nextY });
-    }
-
-    function onUp() {
-      dragRef.current = null;
-      setDragging(false);
-    }
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [dragging]);
-
-  function startDrag(event) {
-    if (!src || event.button !== 0) return;
-    event.preventDefault();
-    dragRef.current = {
-      pointerX: event.clientX,
-      pointerY: event.clientY,
-      startX: focusX,
-      startY: focusY,
-    };
-    setDragging(true);
-  }
-
-  if (!src) {
-    return (
-      <div className="storefront-cover-preview is-empty">
-        <span className="muted">No cover yet</span>
-      </div>
-    );
-  }
-
+function StoreHeroBlock({ category, title, lead, metaBits }) {
   return (
-    <div className="storefront-cover-editor">
-      <div
-        ref={frameRef}
-        className={`storefront-cover-preview has-image${dragging ? ' is-dragging' : ''}`}
-        onPointerDown={startDrag}
-        role="presentation"
-      >
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          style={{ objectPosition: coverObjectPosition({ coverFocusX: focusX, coverFocusY: focusY }) }}
-        />
-        <span className="storefront-cover-hint">{dragging ? 'Release to set' : 'Drag to reposition'}</span>
-      </div>
-      <div className="storefront-cover-sliders">
-        <label>
-          <span>Horizontal</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={focusX}
-            aria-label="Horizontal cover position"
-            onChange={(event) => onFocusChange({ x: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          <span>Vertical</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={focusY}
-            aria-label="Vertical cover position"
-            onChange={(event) => onFocusChange({ y: Number(event.target.value) })}
-          />
-        </label>
-      </div>
-      <p className="muted storefront-cover-note">
-        Preview matches the storefront banner frame. Drag to keep the important part in view.
-      </p>
-    </div>
-  );
-}
-
-function StoreHeroBlock({ coverUrl, appearance, category, title, lead, metaBits }) {
-  return (
-    <section className={`store-hero${coverUrl ? ' has-cover' : ''}`}>
-      {coverUrl ? (
-        <div className="store-hero-media" aria-hidden="true">
-          <img
-            src={coverUrl}
-            alt=""
-            style={{ objectPosition: coverObjectPosition(appearance) }}
-          />
-        </div>
-      ) : null}
+    <section className="store-hero">
       <div className="store-hero-copy">
         <p className="eyebrow">{category || 'SHOP'}</p>
         <h1>{title}</h1>
@@ -547,7 +315,6 @@ function StoreAppearancePreview({
   previewError,
 }) {
   const shopName = business?.name || 'Your shop';
-  const coverUrl = appearance.coverImage ? mediaUrl(appearance.coverImage) : '';
   const metaBits = [];
   if (business?.pickupEnabled !== false) metaBits.push('Pickup available');
   if (business?.deliveryEnabled !== false) {
@@ -588,8 +355,6 @@ function StoreAppearancePreview({
 
       <div className="store-main">
         <StoreHeroBlock
-          coverUrl={coverUrl}
-          appearance={appearance}
           category={business?.category}
           title={shopName}
           lead={
