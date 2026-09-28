@@ -2,6 +2,7 @@ const { body } = require('express-validator');
 const { CATEGORIES } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
+const { isAcceptedImageValue } = require('../utils/imageUpload');
 const {
   STOREFRONT_THEMES,
   STOREFRONT_ACCENTS,
@@ -80,7 +81,7 @@ const updateSettingsRules = [
     .custom((value) => {
       if (value === null || value === '') return true;
       if (typeof value !== 'string') throw new Error('Please upload a JPG, PNG, or WebP image.');
-      if (value.startsWith('data:image/') || value.startsWith('/uploads/logos/')) return true;
+      if (isAcceptedImageValue('logos', value)) return true;
       throw new Error('Please upload a JPG, PNG, or WebP image.');
     }),
   body('currency')
@@ -110,7 +111,7 @@ const updateSettingsRules = [
     .custom((value) => {
       if (value === null || value === '') return true;
       if (typeof value !== 'string') throw new Error('Please upload a JPG, PNG, or WebP image.');
-      if (value.startsWith('data:image/') || value.startsWith('/uploads/covers/')) return true;
+      if (isAcceptedImageValue('covers', value)) return true;
       throw new Error('Please upload a JPG, PNG, or WebP image.');
     }),
   body('storefrontCoverFocusX')
@@ -162,7 +163,7 @@ const updateSettingsRules = [
     .custom((value) => {
       if (value === null || value === '') return true;
       if (typeof value !== 'string') throw new Error('Please upload a JPG, PNG, or WebP image.');
-      if (value.startsWith('data:image/') || value.startsWith('/uploads/payment-qr/')) return true;
+      if (isAcceptedImageValue('payment-qr', value)) return true;
       throw new Error('Please upload a JPG, PNG, or WebP image.');
     }),
   body('paymentUpiId')

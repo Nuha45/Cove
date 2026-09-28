@@ -4,6 +4,21 @@ import { getErrorMessage } from '../utils/errors';
 
 const AuthContext = createContext(null);
 
+const COOKIE_BLOCKED_MESSAGE =
+  'Your details were accepted, but this browser did not keep you signed in. Allow cookies for this site, or open Cove in Safari or Chrome instead of an in-app browser, then log in again.';
+
+// Login succeeds even when the browser drops the session cookie, so confirm it before showing the app.
+async function confirmSession() {
+  try {
+    return await authService.me();
+  } catch (err) {
+    if (err.response?.status === 401) {
+      err.response.data = { ...(err.response.data || {}), message: COOKIE_BLOCKED_MESSAGE };
+    }
+    throw err;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [business, setBusiness] = useState(null);
@@ -36,16 +51,18 @@ export function AuthProvider({ children }) {
 
   async function register(payload) {
     const data = await authService.register(payload);
-    setUser(data.user);
-    setBusiness(data.business);
+    const session = await confirmSession();
+    setUser(session.user);
+    setBusiness(session.business);
     setStatus('authenticated');
     return data;
   }
 
   async function login(payload) {
     const data = await authService.login(payload);
-    setUser(data.user);
-    setBusiness(data.business);
+    const session = await confirmSession();
+    setUser(session.user);
+    setBusiness(session.business);
     setStatus('authenticated');
     return data;
   }

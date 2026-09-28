@@ -1,6 +1,7 @@
 const { body, param, query } = require('express-validator');
 const mongoose = require('mongoose');
 const { STATUSES } = require('../utils/productStatus');
+const { isAcceptedImageValue } = require('../utils/imageUpload');
 
 function requiredMoney(field, missingMessage) {
   return body(field).custom((value) => {
@@ -65,7 +66,11 @@ const imageRules = [
     .isString()
     .withMessage('Please upload a JPG, PNG, or WebP image.')
     .isLength({ max: 700000 })
-    .withMessage('That image is too large. Please use a smaller photo.'),
+    .withMessage('That image is too large. Please use a smaller photo.')
+    .custom((value) => {
+      if (isAcceptedImageValue('products', value)) return true;
+      throw new Error('Please upload a JPG, PNG, or WebP image.');
+    }),
 ];
 
 const statusRule = body('status')

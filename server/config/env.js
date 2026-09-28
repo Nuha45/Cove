@@ -136,6 +136,21 @@ module.exports = {
       return requested;
     })(),
   },
+  // Image storage. Uploads fail with a clear error until all three values are set.
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+  },
+  // Automated tests only. Ignored when NODE_ENV=production.
+  imageStorage: (() => {
+    const requested = process.env.IMAGE_STORAGE === 'memory';
+    if (requested && isProduction) {
+      console.warn('[images] IMAGE_STORAGE=memory is ignored when NODE_ENV=production.');
+      return 'cloudinary';
+    }
+    return requested ? 'memory' : 'cloudinary';
+  })(),
   // Optional transactional email. Missing config must not crash the app.
   email: {
     provider: process.env.EMAIL_PROVIDER || '',

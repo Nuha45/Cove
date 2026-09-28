@@ -118,7 +118,7 @@ describe('sellerPayments', { timeout: 180000 }, () => {
     assert.equal(saved.status, 200, JSON.stringify(saved.data));
     assert.equal(saved.data.business.paymentQrEnabled, true);
     assert.equal(saved.data.business.paymentLink, 'https://pay.example.com/cove-test');
-    assert.match(saved.data.business.paymentQrImage, /^\/uploads\/payment-qr\//);
+    assert.match(saved.data.business.paymentQrImage, /^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/v\d+\/cove\/payment-qr\//);
 
     const badLink = await api('PATCH', '/api/business/settings', {
       token: owner.token,
@@ -134,7 +134,7 @@ describe('sellerPayments', { timeout: 180000 }, () => {
     assert.equal(store.data.business.payments.payOnPickupEnabled, true);
     assert.equal(store.data.business.payments.paymentLink, 'https://pay.example.com/cove-test');
     assert.equal(store.data.business.payments.paymentInstructions, 'UPI: shop@upi');
-    assert.match(store.data.business.payments.paymentQrImage, /^\/uploads\/payment-qr\//);
+    assert.equal(store.data.business.payments.paymentQrImage, saved.data.business.paymentQrImage);
     assert.equal(store.data.business.paymentLink, undefined);
     assert.equal(store.data.business.ownerId, undefined);
     assert.equal(store.data.business.id, undefined);

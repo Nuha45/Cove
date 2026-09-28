@@ -29,12 +29,16 @@ export default function TopBar({ onMenu, menuOpen = false }) {
       <div className="top-actions">
         <NotificationBell />
         {business?.slug ? (
-          <a className="store-link" href={storePath} target="_blank" rel="noreferrer">
-            <ExternalLink size={15} /> View storefront
+          <a className="store-link" href={storePath} target="_blank" rel="noreferrer" aria-label="View storefront">
+            <ExternalLink size={15} aria-hidden="true" />
+            <span className="store-link-full">View storefront</span>
+            <span className="store-link-short" aria-hidden="true">Store</span>
           </a>
         ) : (
-          <a className="store-link" href="/storefront">
-            <ExternalLink size={15} /> View storefront
+          <a className="store-link" href="/storefront" aria-label="View storefront">
+            <ExternalLink size={15} aria-hidden="true" />
+            <span className="store-link-full">View storefront</span>
+            <span className="store-link-short" aria-hidden="true">Store</span>
           </a>
         )}
       </div>
