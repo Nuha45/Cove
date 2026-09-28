@@ -4,6 +4,7 @@ const customerService = require('../services/customerService');
 const list = asyncHandler(async (req, res) => {
   const result = await customerService.list(req.businessId, {
     search: req.query.search,
+    type: req.query.type,
     page: req.query.page,
     limit: req.query.limit,
   });

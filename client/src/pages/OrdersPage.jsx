@@ -5,6 +5,7 @@ import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
 import StatCard from '../components/ui/StatCard';
+import useFilterParam from '../hooks/useFilterParam';
 import { listOrders } from '../services/orderService';
 import { formatEyebrowDate, formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
@@ -19,7 +20,7 @@ export default function OrdersPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useFilterParam('status', ORDER_STATUSES);
   const [paymentStatus, setPaymentStatus] = useState('');
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');

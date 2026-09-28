@@ -104,8 +104,14 @@ async function reverseOrder(businessId, customerId, orderTotal, cancelledOrderId
   return customer;
 }
 
-function buildFilter(businessId, { search }) {
-  const filter = { businessId };
+// Same split as the Analytics customer insights: new = at most one order, returning = two or more.
+const CUSTOMER_TYPE_FILTERS = {
+  new: { totalOrders: { $lte: 1 } },
+  returning: { totalOrders: { $gte: 2 } },
+};
+
+function buildFilter(businessId, { search, type }) {
+  const filter = { businessId, ...(CUSTOMER_TYPE_FILTERS[type] || {}) };
   if (search) {
     const pattern = new RegExp(escapeRegex(search), 'i');
     const phoneKey = normalizePhone(search);

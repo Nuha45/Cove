@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Smartphone } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Copy, ExternalLink, QrCode, Smartphone } from 'lucide-react';
 import { formatPrice } from '../../utils/display';
 import { mediaUrl } from '../../utils/media';
 import { paymentMethodLabel } from '../../utils/payments';
-import { buildUpiPayUri, upiQrDataUrl } from '../../utils/upi';
+import { copyText } from '../../utils/storefront';
+import {
+  IOS_UPI_APPS,
+  buildUpiAppUri,
+  buildUpiPayUri,
+  detectPaymentPlatform,
+  upiQrDataUrl,
+} from '../../utils/upi';
 
 /**
  * Shared seller-direct payment details for checkout and confirmation.
@@ -53,6 +60,29 @@ export default function StorePaymentDetails({
     };
   }, [upiUri]);
 
+  const [platform] = useState(() => detectPaymentPlatform());
+  const [copied, setCopied] = useState('');
+  const [copyError, setCopyError] = useState('');
+  const copiedTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+
+  const plainAmount = Number.isFinite(Number(amount))
+    ? Number(amount).toFixed(2).replace(/\.00$/, '')
+    : '';
+
+  async function copy(kind, value) {
+    window.clearTimeout(copiedTimer.current);
+    try {
+      await copyText(value);
+      setCopyError('');
+      setCopied(kind);
+      copiedTimer.current = window.setTimeout(() => setCopied(''), 2500);
+    } catch {
+      setCopied('');
+      setCopyError('Could not copy automatically. Press and hold the text to copy it.');
+    }
+  }
+
   if (!method) return null;
 
   if (compact) {
@@ -79,22 +109,79 @@ export default function StorePaymentDetails({
         <div className="store-pay-detail">
           <h3>{label}</h3>
 
+          {upiId ? (
+            <div className="store-pay-recipient">
+              <div className="store-pay-recipient-row">
+                <div>
+                  <span>UPI ID</span>
+                  <strong className="store-pay-upi-id">{upiId}</strong>
+                </div>
+                <button className="secondary" type="button" onClick={() => copy('upi', upiId)}>
+                  {copied === 'upi' ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                  {copied === 'upi' ? 'Copied' : 'Copy UPI ID'}
+                </button>
+              </div>
+              <div className="store-pay-recipient-row">
+                <div>
+                  <span>Amount</span>
+                  <strong>{amountLabel}</strong>
+                </div>
+                <button className="secondary" type="button" onClick={() => copy('amount', plainAmount)}>
+                  {copied === 'amount' ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+                  {copied === 'amount' ? 'Copied' : 'Copy amount'}
+                </button>
+              </div>
+              <p className="store-pay-note" role="status" aria-live="polite">
+                {copyError || (copied ? 'Copied. Paste it into your UPI app.' : `Paying ${businessName}. Check the name in your UPI app before you approve.`)}
+              </p>
+            </div>
+          ) : null}
+
           {upiUri ? (
             <>
-              <ol className="store-pay-steps">
-                <li>Tap <strong>Pay with UPI</strong> to open your UPI app with the amount filled in.</li>
-                <li>Or scan the QR below from another phone.</li>
-                <li>
-                  Before you authorize, check that the recipient is <strong>{businessName}</strong>
-                  {upiId ? <> ({upiId})</> : null} and the amount is <strong>{amountLabel}</strong>.
-                </li>
-              </ol>
-              <a className="primary store-pay-cta" href={upiUri}>
-                <Smartphone size={16} aria-hidden="true" /> Pay with UPI
-              </a>
+              {platform === 'android' ? (
+                <div className="store-pay-option-block">
+                  <a className="primary store-pay-cta" href={upiUri}>
+                    <Smartphone size={16} aria-hidden="true" /> Pay with UPI app
+                  </a>
+                  <p className="store-pay-note">
+                    Your phone will ask which UPI app to use. The amount and order number are filled in for you.
+                  </p>
+                </div>
+              ) : null}
+
+              {platform === 'ios' ? (
+                <div className="store-pay-option-block">
+                  <strong className="store-pay-option-title">Pay with a UPI app</strong>
+                  <div className="store-pay-apps">
+                    {IOS_UPI_APPS.map((app) => (
+                      <a key={app.id} className="secondary" href={buildUpiAppUri(upiUri, app.prefix)}>
+                        {app.label}
+                      </a>
+                    ))}
+                  </div>
+                  <p className="store-pay-note">
+                    Choose an app you have installed. If nothing opens, use <strong>Copy UPI ID</strong> or the QR code instead.
+                  </p>
+                  <a className="text-button store-pay-other" href={upiUri}>
+                    Other UPI app (opens your iPhone&apos;s default UPI app)
+                  </a>
+                </div>
+              ) : null}
+
               {generatedQr ? (
-                <div className="store-pay-qr">
-                  <img src={generatedQr} alt={`UPI QR for ${amountLabel} to ${businessName}`} />
+                <div className="store-pay-option-block">
+                  <strong className="store-pay-option-title">
+                    <QrCode size={15} aria-hidden="true" /> Scan QR code
+                  </strong>
+                  <div className="store-pay-qr">
+                    <img src={generatedQr} alt={`UPI QR for ${amountLabel} to ${businessName}`} />
+                  </div>
+                  <p className="store-pay-note">
+                    {platform === 'desktop'
+                      ? 'Open any UPI app on your phone and scan this code. The amount is filled in for you.'
+                      : 'Scan from another phone, or take a screenshot and use “scan from gallery” in your UPI app.'}
+                  </p>
                 </div>
               ) : null}
               {orderNumber ? (
@@ -116,6 +203,11 @@ export default function StorePaymentDetails({
               <div className="store-pay-qr">
                 <img src={mediaUrl(staticQr)} alt={`${businessName} payment QR`} />
               </div>
+              {platform !== 'desktop' ? (
+                <p className="store-pay-note">
+                  Paying on this phone? Take a screenshot and use “scan from gallery” in your UPI app.
+                </p>
+              ) : null}
             </>
           ) : null}
 
@@ -132,7 +224,7 @@ export default function StorePaymentDetails({
             </details>
           ) : null}
 
-          {!upiUri && !staticQr ? (
+          {!upiUri && !staticQr && !upiId ? (
             <p className="store-pay-note">
               This shop has not published UPI details yet. Contact {businessName} about how to pay.
             </p>

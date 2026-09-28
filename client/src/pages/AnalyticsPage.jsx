@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  ChevronRight,
   CircleDollarSign,
   ClipboardList,
   Heart,
@@ -17,6 +19,20 @@ import { getErrorMessage } from '../utils/errors';
 
 const ORDER_STATUSES = ['New', 'Confirmed', 'Preparing', 'Ready', 'Completed', 'Cancelled'];
 const WANT_STATUSES = ['New', 'In Progress', 'Fulfilled', 'Closed'];
+
+function filteredPath(path, key, value) {
+  return `${path}?${new URLSearchParams({ [key]: value }).toString()}`;
+}
+
+function MetricLink({ label, value, to, description }) {
+  return (
+    <Link className="status-chip status-chip-link" to={to} aria-label={`${label}: ${value}. View ${description}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <ChevronRight className="status-chip-arrow" size={16} aria-hidden="true" />
+    </Link>
+  );
+}
 
 export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState(null);
@@ -170,10 +186,13 @@ export default function AnalyticsPage() {
           <SectionHead title="Order status" />
           <div className="status-grid">
             {ORDER_STATUSES.map((status) => (
-              <div key={status} className="status-chip">
-                <span>{status}</span>
-                <strong>{analytics.orderStatus[status] || 0}</strong>
-              </div>
+              <MetricLink
+                key={status}
+                label={status}
+                value={analytics.orderStatus[status] || 0}
+                to={filteredPath('/orders', 'status', status)}
+                description={`${status.toLowerCase()} orders`}
+              />
             ))}
           </div>
         </section>
@@ -181,33 +200,44 @@ export default function AnalyticsPage() {
         <section className="card">
           <SectionHead title="Customer insights" />
           <div className="status-grid customer-insights">
-            <div className="status-chip">
-              <span>New customers</span>
-              <strong>{analytics.customers.new}</strong>
-            </div>
-            <div className="status-chip">
-              <span>Returning customers</span>
-              <strong>{analytics.customers.returning}</strong>
-            </div>
-            <div className="status-chip">
-              <span>Total customers</span>
-              <strong>{analytics.customers.total}</strong>
-            </div>
+            <MetricLink
+              label="New customers"
+              value={analytics.customers.new}
+              to={filteredPath('/customers', 'type', 'new')}
+              description="new customers"
+            />
+            <MetricLink
+              label="Returning customers"
+              value={analytics.customers.returning}
+              to={filteredPath('/customers', 'type', 'returning')}
+              description="returning customers"
+            />
+            <MetricLink
+              label="Total customers"
+              value={analytics.customers.total}
+              to="/customers"
+              description="all customers"
+            />
           </div>
         </section>
 
         <section className="card">
           <SectionHead title="Customer wants" />
           <div className="status-grid">
-            <div className="status-chip">
-              <span>Total requests</span>
-              <strong>{analytics.customerWants.total}</strong>
-            </div>
+            <MetricLink
+              label="Total requests"
+              value={analytics.customerWants.total}
+              to="/customer-wants"
+              description="all customer requests"
+            />
             {WANT_STATUSES.map((status) => (
-              <div key={status} className="status-chip">
-                <span>{status}</span>
-                <strong>{analytics.customerWants[status] || 0}</strong>
-              </div>
+              <MetricLink
+                key={status}
+                label={status}
+                value={analytics.customerWants[status] || 0}
+                to={filteredPath('/customer-wants', 'status', status)}
+                description={`${status.toLowerCase()} customer requests`}
+              />
             ))}
           </div>
         </section>

@@ -11,6 +11,7 @@ const idRule = param('id')
 
 const listRules = [
   query('search').optional().trim().isLength({ max: 80 }).withMessage('Search is too long.'),
+  query('type').optional().isIn(['new', 'returning']).withMessage('Please choose new or returning customers.'),
   query('page').optional().isInt({ min: 1, max: 10000 }).withMessage('That page is not valid.'),
   query('limit').optional().isInt({ min: 1, max: 24 }).withMessage('Please request between 1 and 24 customers.'),
 ];

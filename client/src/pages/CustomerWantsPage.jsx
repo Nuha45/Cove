@@ -4,6 +4,7 @@ import { Heart, Search } from 'lucide-react';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import useFilterParam from '../hooks/useFilterParam';
 import { listCustomerWants } from '../services/customerWantService';
 import { formatEyebrowDate, formatOrderDate } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
@@ -16,7 +17,7 @@ export default function CustomerWantsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useFilterParam('status', WANT_STATUSES);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);

@@ -31,17 +31,46 @@ export function buildUpiPayUri({
   const am = Number(amount);
   if (!Number.isFinite(am) || am <= 0) return '';
 
-  const params = new URLSearchParams();
-  params.set('pa', pa);
+  const params = [['pa', pa]];
   const pn = String(payeeName || '').trim().slice(0, 50);
-  if (pn) params.set('pn', pn);
+  if (pn) params.push(['pn', pn]);
   // Two decimal places for INR amounts in UPI intents
-  params.set('am', am.toFixed(2));
-  params.set('cu', 'INR');
+  params.push(['am', am.toFixed(2)]);
+  params.push(['cu', 'INR']);
   const tn = String(transactionNote || '').trim().slice(0, 80);
-  if (tn) params.set('tn', tn);
+  if (tn) params.push(['tn', tn]);
 
-  return `upi://pay?${params.toString()}`;
+  // Some UPI apps show "+" literally and reject an escaped "@", so use %20 and keep "@" as is.
+  const query = params
+    .map(([key, value]) => `${key}=${encodeURIComponent(value).replace(/%40/g, '@')}`)
+    .join('&');
+  return `upi://pay?${query}`;
+}
+
+/**
+ * Android shows a chooser for upi:// links. iOS has no chooser: upi:// opens whichever single
+ * app claimed the scheme (often WhatsApp), so iPhone users get per-app links instead.
+ */
+export function detectPaymentPlatform(nav = typeof navigator !== 'undefined' ? navigator : null) {
+  if (!nav) return 'desktop';
+  const ua = nav.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/iphone|ipad|ipod/i.test(ua) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)) return 'ios';
+  return 'desktop';
+}
+
+// iOS URL schemes registered by each app; a browser cannot tell which ones are installed.
+export const IOS_UPI_APPS = [
+  { id: 'gpay', label: 'Google Pay', prefix: 'tez://upi/pay' },
+  { id: 'phonepe', label: 'PhonePe', prefix: 'phonepe://pay' },
+  { id: 'paytm', label: 'Paytm', prefix: 'paytmmp://upi/pay' },
+  { id: 'bhim', label: 'BHIM', prefix: 'bhim://upi/pay' },
+];
+
+export function buildUpiAppUri(upiUri, prefix) {
+  const query = String(upiUri || '').split('?')[1];
+  if (!query || !prefix) return '';
+  return `${prefix}?${query}`;
 }
 
 export async function upiQrDataUrl(upiUri) {

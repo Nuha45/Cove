@@ -18,8 +18,12 @@ export function storefrontUrl(slug) {
 
 export async function copyText(value) {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Some in-app browsers deny the async clipboard; try the legacy path below.
+    }
   }
   const field = document.createElement('textarea');
   field.value = value;
@@ -28,8 +32,10 @@ export async function copyText(value) {
   field.style.left = '-9999px';
   document.body.appendChild(field);
   field.select();
-  document.execCommand('copy');
+  field.setSelectionRange(0, value.length);
+  const copied = document.execCommand('copy');
   document.body.removeChild(field);
+  if (!copied) throw new Error('Copy failed');
 }
 
 function confirmationKey(slug, orderNumber) {

@@ -3,11 +3,18 @@ import { Link } from 'react-router-dom';
 import { Search, Users } from 'lucide-react';
 import PageIntro from '../components/ui/PageIntro';
 import EmptyState from '../components/ui/EmptyState';
+import useFilterParam from '../hooks/useFilterParam';
 import { listCustomers } from '../services/customerService';
 import { formatEyebrowDate, formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
 
+const CUSTOMER_TYPES = [
+  { value: 'new', label: 'New customers' },
+  { value: 'returning', label: 'Returning customers' },
+];
+
 export default function CustomersPage() {
+  const [type, setType] = useFilterParam('type', CUSTOMER_TYPES.map((item) => item.value));
   const [customers, setCustomers] = useState([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -35,6 +42,7 @@ export default function CustomersPage() {
       try {
         const result = await listCustomers({
           search: query || undefined,
+          type: type || undefined,
           page,
           limit: 12,
         });
@@ -55,9 +63,9 @@ export default function CustomersPage() {
     return () => {
       cancelled = true;
     };
-  }, [query, page, reloadKey]);
+  }, [query, type, page, reloadKey]);
 
-  const emptyBecauseFilter = total === 0 && query;
+  const emptyBecauseFilter = total === 0 && (query || type);
 
   return (
     <>
@@ -78,6 +86,20 @@ export default function CustomersPage() {
               aria-label="Search customers"
             />
           </div>
+          <div className="tool-filters">
+            <select
+              className="filter-select"
+              aria-label="Filter by customer type"
+              value={type}
+              onChange={(event) => {
+                setType(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All customers</option>
+              {CUSTOMER_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </div>
         </div>
 
         {loadState === 'loading' ? <div className="panel-state">Loading your customers...</div> : null}
@@ -96,7 +118,7 @@ export default function CustomersPage() {
             <EmptyState
               title={emptyBecauseFilter ? 'No matching customers' : 'No customers yet'}
               text={emptyBecauseFilter
-                ? 'Try a different search.'
+                ? 'Try a different search or filter.'
                 : 'Your customer list will grow as orders come in.'}
             />
             {!emptyBecauseFilter ? (

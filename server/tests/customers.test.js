@@ -353,4 +353,30 @@ describe('customers', { timeout: 180000 }, () => {
     });
     assert.equal(emptyName.status, 400);
   });
+
+  it('filters customers into new and returning to match analytics', async () => {
+    const seller = await registerTenant('types');
+    const product = await addProduct(seller.token, { name: 'Type Ring', price: 50, stockQuantity: 10 });
+    const order = (name, phone) => api('POST', `/api/store/${seller.slug}/orders`, {
+      body: { customer: { name, phone }, items: [{ productId: product.id, quantity: 1 }], deliveryMethod: 'Pickup' },
+    });
+    for (const [name, phone] of [['Repeat Buyer', '9000044441'], ['Repeat Buyer', '9000044441'], ['First Buyer', '9000044442']]) {
+      assert.equal((await order(name, phone)).status, 201);
+    }
+
+    const all = await api('GET', '/api/customers', { token: seller.token });
+    const fresh = await api('GET', '/api/customers?type=new', { token: seller.token });
+    const returning = await api('GET', '/api/customers?type=returning', { token: seller.token });
+    assert.equal(all.data.total, 2);
+    assert.deepEqual(fresh.data.customers.map((customer) => customer.name), ['First Buyer']);
+    assert.deepEqual(returning.data.customers.map((customer) => customer.name), ['Repeat Buyer']);
+
+    const analytics = await api('GET', '/api/analytics', { token: seller.token });
+    assert.equal(analytics.data.analytics.customers.new, fresh.data.total);
+    assert.equal(analytics.data.analytics.customers.returning, returning.data.total);
+    assert.equal(analytics.data.analytics.customers.total, all.data.total);
+
+    const invalid = await api('GET', '/api/customers?type=vip', { token: seller.token });
+    assert.equal(invalid.status, 400);
+  });
 });
