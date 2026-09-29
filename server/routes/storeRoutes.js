@@ -5,11 +5,13 @@ const {
   publicConfirmationLimiter,
   publicWantBoardLimiter,
   publicWantVoteLimiter,
+  publicEventLimiter,
 } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const {
   storefrontQueryRules,
   productRules,
+  trackEventRules,
   checkoutRules,
   confirmationRules,
   paymentReferenceRules,
@@ -25,6 +27,14 @@ const router = express.Router();
 
 router.get('/:slug', storefrontQueryRules, validate, storeController.getStorefront);
 router.get('/:slug/products/:productId', productRules, validate, storeController.getProduct);
+router.post('/:slug/events', publicEventLimiter, trackEventRules, validate, storeController.trackEvent);
+router.get(
+  '/:slug/orders/confirm/:token/invoice',
+  publicConfirmationLimiter,
+  confirmationRules,
+  validate,
+  storeController.getOrderInvoice
+);
 router.get(
   '/:slug/orders/confirm/:token',
   publicConfirmationLimiter,

@@ -116,10 +116,138 @@ async function archive(businessId, id) {
   return product;
 }
 
+const BULK_ACTIONS = ['setPrice', 'adjustPricePercent', 'setStock', 'adjustStock', 'setStatus', 'archive'];
+const MAX_PRICE = 10000000;
+const MAX_STOCK = 1000000;
+
+// Every bulk update is scoped to { businessId } so foreign ids silently match nothing.
+async function bulkUpdate(businessId, { ids, action, value }) {
+  const uniqueIds = [...new Set((ids || []).map(String))];
+  if (!uniqueIds.length) throw new ApiError(400, 'Select at least one product.');
+  if (!BULK_ACTIONS.includes(action)) throw new ApiError(400, 'Choose a valid bulk action.');
+
+  const filter = { _id: { $in: uniqueIds }, businessId, status: { $ne: 'Archived' } };
+  const number = Number(value);
+  let update;
+
+  if (action === 'setPrice') {
+    if (!Number.isFinite(number) || number < 0 || number > MAX_PRICE) {
+      throw new ApiError(400, 'Enter a price between 0 and 1,00,00,000.');
+    }
+    update = { $set: { price: roundMoney(number) } };
+  } else if (action === 'adjustPricePercent') {
+    if (!Number.isFinite(number) || number < -90 || number > 500 || number === 0) {
+      throw new ApiError(400, 'Enter a percentage between -90 and 500.');
+    }
+    const factor = 1 + number / 100;
+    update = [{
+      $set: {
+        price: {
+          $min: [MAX_PRICE, { $max: [0, { $round: [{ $multiply: ['$price', factor] }, 2] }] }],
+        },
+      },
+    }];
+  } else if (action === 'setStock') {
+    if (!Number.isInteger(number) || number < 0 || number > MAX_STOCK) {
+      throw new ApiError(400, 'Enter a whole stock number between 0 and 10,00,000.');
+    }
+    update = { $set: { stockQuantity: number } };
+  } else if (action === 'adjustStock') {
+    if (!Number.isInteger(number) || number === 0 || Math.abs(number) > MAX_STOCK) {
+      throw new ApiError(400, 'Enter a whole number to add or remove, for example 5 or -3.');
+    }
+    update = [{
+      $set: {
+        stockQuantity: { $min: [MAX_STOCK, { $max: [0, { $add: ['$stockQuantity', number] }] }] },
+      },
+    }];
+  } else if (action === 'setStatus') {
+    if (!['Active', 'Draft'].includes(value)) {
+      throw new ApiError(400, 'Choose Active or Draft.');
+    }
+    update = { $set: { status: value } };
+  } else if (action === 'archive') {
+    update = { $set: { status: 'Archived' } };
+  }
+
+  const result = await Product.updateMany(filter, update, { runValidators: true });
+  return {
+    matched: result.matchedCount,
+    modified: result.modifiedCount,
+  };
+}
+
+async function listForExport(businessId, { ids } = {}) {
+  const filter = { businessId, status: { $in: ['Active', 'Draft'] } };
+  if (Array.isArray(ids) && ids.length) filter._id = { $in: ids };
+  return Product.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(5000)
+    .select('name category price stockQuantity status createdAt')
+    .lean();
+}
+
+async function inventory(businessId, threshold) {
+  const base = { businessId, status: { $in: ['Active', 'Draft'] } };
+  const [outOfStock, lowStock, counts] = await Promise.all([
+    Product.find({ ...base, stockQuantity: 0 })
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .select('name stockQuantity status category'),
+    Product.find({ ...base, stockQuantity: { $gt: 0, $lte: threshold } })
+      .sort({ stockQuantity: 1, name: 1 })
+      .limit(20)
+      .select('name stockQuantity status category'),
+    Product.aggregate([
+      { $match: base },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          outOfStock: { $sum: { $cond: [{ $eq: ['$stockQuantity', 0] }, 1, 0] } },
+          lowStock: {
+            $sum: {
+              $cond: [
+                { $and: [{ $gt: ['$stockQuantity', 0] }, { $lte: ['$stockQuantity', threshold] }] },
+                1,
+                0,
+              ],
+            },
+          },
+          units: { $sum: '$stockQuantity' },
+        },
+      },
+    ]),
+  ]);
+  const summary = counts[0] || { total: 0, outOfStock: 0, lowStock: 0, units: 0 };
+  const shape = (product) => ({
+    id: product._id.toString(),
+    name: product.name,
+    stockQuantity: product.stockQuantity,
+    status: product.status,
+    category: product.category || '',
+  });
+  return {
+    threshold,
+    counts: {
+      total: summary.total,
+      outOfStock: summary.outOfStock,
+      lowStock: summary.lowStock,
+      units: summary.units,
+    },
+    outOfStock: outOfStock.map(shape),
+    lowStock: lowStock.map(shape),
+  };
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
   archive,
+  bulkUpdate,
+  listForExport,
+  inventory,
+  BULK_ACTIONS,
 };

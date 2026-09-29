@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
-import { CreditCard } from 'lucide-react';
-import { useOutletContext } from 'react-router-dom';
+import { Check, CreditCard } from 'lucide-react';
+import { Link, useOutletContext } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
 import { cancelSubscription, getBilling, startSubscription } from '../services/billingService';
 import { formatEyebrowDate, formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
-import { BILLING_STATUS_LABEL, BILLING_STATUS_TONE, loadRazorpayCheckout } from '../utils/billing';
+import {
+  BILLING_STATUS_LABEL,
+  BILLING_STATUS_TONE,
+  PLAN_DETAILS,
+  loadRazorpayCheckout,
+} from '../utils/billing';
 
 export default function BillingPage() {
-  const { notify } = useOutletContext();
+  const { notify, refreshPlan } = useOutletContext();
   const [data, setData] = useState(null);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
@@ -33,23 +38,26 @@ export default function BillingPage() {
     load();
   }, []);
 
-  async function handleSubscribe() {
-    setBusy('subscribe');
+  async function afterChange() {
+    await load();
+    refreshPlan?.();
+  }
+
+  async function handleChoose(planKey) {
+    setBusy(planKey);
     setActionError('');
     try {
-      const result = await startSubscription();
-      setData((current) => ({
-        ...current,
-        subscription: result.subscription,
-        checkout: {
-          ...(current?.checkout || {}),
-          keyId: result.checkout.keyId,
-          configured: true,
-        },
-      }));
+      const result = await startSubscription(planKey);
 
+      if (result.planChange) {
+        notify(result.planChange.message);
+        await afterChange();
+        return;
+      }
+
+      setData((current) => ({ ...current, subscription: result.subscription }));
       if (!result.checkout?.keyId || !result.checkout?.subscriptionId) {
-        throw new Error('Checkout is not ready yet. Check Razorpay configuration.');
+        throw new Error('Checkout is not available right now. Please try again in a few minutes.');
       }
 
       const Razorpay = await loadRazorpayCheckout();
@@ -57,11 +65,11 @@ export default function BillingPage() {
         key: result.checkout.keyId,
         subscription_id: result.checkout.subscriptionId,
         name: 'Cove',
-        description: `${result.checkout.planName} · ₹${result.checkout.amount}/month after trial`,
+        description: `${result.checkout.planName} · ₹${result.checkout.amount}/month`,
         theme: { color: '#c45c26' },
         handler() {
           notify('Payment submitted. Your plan updates when Cove confirms it.');
-          load();
+          afterChange();
         },
         modal: {
           ondismiss() {
@@ -78,13 +86,21 @@ export default function BillingPage() {
   }
 
   async function handleCancel() {
-    if (!window.confirm('Cancel Cove Pro? You can subscribe again later.')) return;
+    const planName = data?.plan?.name || 'your plan';
+    const current = data?.subscription?.status;
+    const question = current === 'active'
+      ? `Cancel ${planName}? It will not renew, and you keep it until the end of the current billing period.`
+      : current === 'trialing'
+        ? `Cancel your ${planName} plan choice? Nothing has been charged and your free trial continues.`
+        : `Cancel ${planName}? You can subscribe again later.`;
+    if (!window.confirm(question)) return;
     setBusy('cancel');
     setActionError('');
     try {
       const result = await cancelSubscription();
       setData((current) => ({ ...current, subscription: result.subscription }));
       notify(result.message || 'Subscription cancelled.');
+      refreshPlan?.();
     } catch (err) {
       setActionError(getErrorMessage(err));
     } finally {
@@ -93,19 +109,62 @@ export default function BillingPage() {
   }
 
   const subscription = data?.subscription;
-  const plan = data?.plan;
-  const status = subscription?.status || 'incomplete';
+  const currentPlan = data?.plan;
+  const plans = data?.plans || [];
+  const periodOver = Boolean(
+    subscription?.cancelAtPeriodEnd
+    && subscription?.currentPeriodEndAt
+    && new Date(subscription.currentPeriodEndAt) <= new Date()
+  );
+  const status = subscription?.status === 'active' && periodOver ? 'cancelled' : subscription?.status || 'incomplete';
   const statusLabel = BILLING_STATUS_LABEL[status] || status;
-  const inTrial = status === 'trialing';
-  const canStartCheckout = status !== 'active';
-  const showCancel = subscription?.hasProviderSubscription && status !== 'cancelled';
+  const inTrial = Boolean(data?.trial?.active);
+  const trialEnded = Boolean(data?.trial?.ended);
+  const storePaused = Boolean(data?.store?.paused);
+  const trialEndedUnpaid = !inTrial && data?.access === 'trial_ended';
+  const trialDays = data?.trial?.days || 7;
+  const hasProvider = Boolean(subscription?.hasProviderSubscription);
+  const isPaidActive = status === 'active' && hasProvider;
+  const endingAtPeriodEnd = isPaidActive && subscription?.cancelAtPeriodEnd;
+  const scheduledPlan = isPaidActive ? subscription?.scheduledPlan : '';
+  const scheduledPlanName = plans.find((plan) => plan.key === scheduledPlan)?.name;
+  const showCancel = hasProvider && status !== 'cancelled' && !subscription?.cancelAtPeriodEnd;
+  const advancedIncluded = Boolean(data?.entitlements?.advanced);
+  const periodEnd = subscription?.currentPeriodEndAt ? formatOrderDate(subscription.currentPeriodEndAt) : '';
+
+  function planAction(plan) {
+    const isCurrent = subscription?.plan === plan.key;
+    if (endingAtPeriodEnd) {
+      return isCurrent
+        ? { label: 'Current plan', disabled: true }
+        : { label: `Choose ${plan.name}`, disabled: true, note: 'Available after your current plan ends.' };
+    }
+    if (isPaidActive && isCurrent && scheduledPlan) return { label: `Keep ${plan.name}`, disabled: false };
+    if (isPaidActive && scheduledPlan === plan.key) return { label: 'Starts next cycle', disabled: true };
+    if (isPaidActive && isCurrent) return { label: 'Current plan', disabled: true };
+    if (!plan.checkoutConfigured) {
+      return { label: 'Not available yet', disabled: true, note: 'Payments are currently being configured.' };
+    }
+    if (status === 'past_due' && hasProvider) {
+      return isCurrent
+        ? { label: 'Complete payment', disabled: false }
+        : { label: `Choose ${plan.name}`, disabled: true, note: 'Resolve the pending payment first.' };
+    }
+    if (isPaidActive) {
+      return { label: plan.key === 'advanced' ? 'Upgrade to Cove Plus' : 'Switch to Cove Basic', disabled: false };
+    }
+    if (hasProvider && isCurrent && inTrial) {
+      return { label: 'Continue checkout', disabled: false };
+    }
+    return { label: `Choose ${plan.name}`, disabled: false };
+  }
 
   return (
     <>
       <PageIntro
         eyebrow={formatEyebrowDate()}
         title="Billing"
-        subtitle="Cove Pro keeps your shop running. This is your SaaS subscription with Cove — not customer checkout."
+        subtitle="Your Cove subscription. This is separate from payments your customers make to you."
       />
 
       {loadState === 'loading' ? <section className="card panel-state">Loading billing...</section> : null}
@@ -117,46 +176,104 @@ export default function BillingPage() {
         </section>
       ) : null}
 
-      {loadState === 'ready' && plan && subscription ? (
-        <div className="billing-layout">
-          <section className="card billing-plan-card">
+      {loadState === 'ready' && currentPlan && subscription ? (
+        <>
+          <section className="card billing-plan-card billing-status-card">
             <div className="billing-plan-head">
               <div>
-                <p className="eyebrow">COVE SAAS</p>
-                <h2>{plan.name}</h2>
-                <p className="billing-price">
-                  {formatPrice(plan.amount, plan.currency)}
-                  <span>/month</span>
-                </p>
+                <p className="eyebrow">YOUR SUBSCRIPTION</p>
+                {inTrial ? (
+                  <>
+                    <h2>{trialDays}-day free trial</h2>
+                    <p className="billing-price">Free<span> until {formatOrderDate(subscription.trialEndAt)}</span></p>
+                  </>
+                ) : !hasProvider ? (
+                  <>
+                    <h2>No active plan</h2>
+                    <p className="muted">Choose Cove Basic or Cove Plus below.</p>
+                  </>
+                ) : (
+                  <>
+                    <h2>{currentPlan.name}</h2>
+                    <p className="billing-price">
+                      {formatPrice(currentPlan.amount, currentPlan.currency)}
+                      <span>/month</span>
+                    </p>
+                  </>
+                )}
               </div>
               <Badge tone={BILLING_STATUS_TONE[status] || 'neutral'}>{statusLabel}</Badge>
             </div>
 
             {inTrial ? (
               <div className="billing-callout">
-                <strong>30 days free</strong>
-                <p>₹599/month after your trial. Your trial ends {formatOrderDate(subscription.trialEndAt)}.</p>
+                <strong>{trialDays}-day free trial</strong>
+                <p>
+                  Every Cove Plus feature is unlocked until {formatOrderDate(subscription.trialEndAt)}.
+                  {hasProvider
+                    ? ` Your ${currentPlan.name} plan starts when the trial ends.`
+                    : ' After that, choose Cove Basic or Cove Plus to keep your store open. Nothing is charged unless you choose a plan.'}
+                </p>
               </div>
             ) : null}
 
-            {status === 'incomplete' ? (
+            {trialEndedUnpaid ? (
+              <div className="billing-callout warn">
+                <strong>Your trial has ended</strong>
+                <p>
+                  Choose a plan to reopen your Cove store.
+                  {storePaused
+                    ? ' Your storefront is paused until then. Your products, orders and customers are safe.'
+                    : ' Cove Plus features are locked until a plan is active.'}
+                </p>
+              </div>
+            ) : null}
+
+            {storePaused && !trialEndedUnpaid ? (
+              <div className="billing-callout warn">
+                <strong>Your Cove store is paused</strong>
+                <p>Choose a plan to reopen your Cove store. Your products, orders and customers are safe.</p>
+              </div>
+            ) : null}
+
+            {status === 'incomplete' && !trialEnded && !trialEndedUnpaid && !storePaused ? (
               <div className="billing-callout">
                 <strong>Payment required</strong>
-                <p>Start Cove Pro to keep billing details ready. Checkout confirms on the server — not in the browser alone.</p>
+                <p>Choose a plan below. Your plan becomes active as soon as the payment is confirmed.</p>
+              </div>
+            ) : null}
+
+            {endingAtPeriodEnd ? (
+              <div className="billing-callout">
+                <strong>Your subscription will not renew</strong>
+                <p>
+                  You keep {currentPlan.name}{periodEnd ? ` until ${periodEnd}` : ' until the end of the current billing period'}.
+                  You can choose a plan again after that.
+                </p>
+              </div>
+            ) : null}
+
+            {scheduledPlanName ? (
+              <div className="billing-callout">
+                <strong>Switching to {scheduledPlanName}</strong>
+                <p>
+                  You keep {currentPlan.name}{periodEnd ? ` until ${periodEnd}` : ' until the end of the current billing period'},
+                  then {scheduledPlanName} starts with the next cycle.
+                </p>
               </div>
             ) : null}
 
             {status === 'past_due' ? (
               <div className="billing-callout warn">
-                <strong>Past due</strong>
-                <p>A recurring payment needs attention. Update payment details in Razorpay Checkout when prompted.</p>
+                <strong>Payment due</strong>
+                <p>Your last monthly payment did not go through. Choose Complete payment below to update your payment details.</p>
               </div>
             ) : null}
 
             {status === 'halted' ? (
               <div className="billing-callout warn">
-                <strong>Halted</strong>
-                <p>Automatic charges stopped after failed retries. Subscribe again or update the card with Razorpay.</p>
+                <strong>Payment failed</strong>
+                <p>We could not collect your monthly payment after several tries, so automatic renewal has stopped. Choose a plan below to start again.</p>
               </div>
             ) : null}
 
@@ -178,51 +295,86 @@ export default function BillingPage() {
                 </dd>
               </div>
               <div>
-                <dt>Next billing</dt>
+                <dt>{endingAtPeriodEnd ? 'Access until' : 'Next billing'}</dt>
                 <dd>
-                  {status === 'active' && subscription.currentPeriodEndAt
-                    ? formatOrderDate(subscription.currentPeriodEndAt)
-                    : inTrial && subscription.trialEndAt
+                  {status === 'active' && periodEnd
+                    ? periodEnd
+                    : inTrial && hasProvider && subscription.trialEndAt
                       ? formatOrderDate(subscription.trialEndAt)
                       : '—'}
                 </dd>
+              </div>
+              <div>
+                <dt>Cove Plus features</dt>
+                <dd>{advancedIncluded ? 'Included' : 'Not included'}</dd>
               </div>
             </dl>
 
             {actionError ? <p className="form-error">{actionError}</p> : null}
 
-            <div className="billing-actions">
-              {canStartCheckout ? (
-                <button className="primary" type="button" disabled={Boolean(busy)} onClick={handleSubscribe}>
-                  <CreditCard size={16} />
-                  {busy === 'subscribe' ? 'Starting checkout...' : inTrial ? 'Add payment method' : 'Subscribe to Cove Pro'}
-                </button>
-              ) : null}
-              {showCancel ? (
+            {showCancel ? (
+              <div className="billing-actions">
                 <button className="secondary" type="button" disabled={Boolean(busy)} onClick={handleCancel}>
                   {busy === 'cancel' ? 'Cancelling...' : 'Cancel subscription'}
                 </button>
-              ) : null}
-            </div>
-
-            {!data.checkout?.configured ? (
-              <p className="muted">Razorpay is not fully configured on the server yet. You can still view your trial status.</p>
+              </div>
             ) : null}
           </section>
 
-          <aside className="card billing-side-card">
-            <h2>What you get</h2>
-            <ul className="billing-bullets">
-              <li>Products, orders, customers, and storefront</li>
-              <li>Customer wants / demand capture</li>
-              <li>Business settings and delivery controls</li>
-            </ul>
-            <p className="muted">
-              Customer payments to your shop are separate and not part of this phase.
-              This page is only for your Cove subscription.
-            </p>
-          </aside>
-        </div>
+          <div className="plan-grid">
+            {plans.map((plan) => {
+              const details = PLAN_DETAILS[plan.key];
+              const action = planAction(plan);
+              const isCurrent = subscription.plan === plan.key && (isPaidActive || status === 'past_due');
+              return (
+                <section
+                  key={plan.key}
+                  className={`card plan-card${plan.key === 'advanced' ? ' featured' : ''}${isCurrent ? ' current' : ''}`}
+                  aria-labelledby={`plan-${plan.key}`}
+                >
+                  <div className="plan-card-head">
+                    <div>
+                      <h2 id={`plan-${plan.key}`}>{plan.name}</h2>
+                      <p className="billing-price">
+                        {formatPrice(plan.amount, plan.currency)}
+                        <span>/month</span>
+                      </p>
+                    </div>
+                    {plan.key === 'advanced' ? <Badge tone="orange">Recommended</Badge> : null}
+                  </div>
+                  <p className="muted plan-card-lead">{details?.lead}</p>
+                  <ul className="plan-features">
+                    {(details?.features || []).map((feature) => (
+                      <li key={feature}>
+                        <Check size={15} aria-hidden="true" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className={plan.key === 'advanced' ? 'primary' : 'secondary'}
+                    type="button"
+                    disabled={Boolean(busy) || action.disabled}
+                    onClick={() => handleChoose(plan.key)}
+                  >
+                    {plan.key === 'advanced' && !action.disabled ? <CreditCard size={16} /> : null}
+                    {busy === plan.key ? 'Starting...' : action.label}
+                  </button>
+                  {action.note ? <p className="muted plan-card-note">{action.note}</p> : null}
+                </section>
+              );
+            })}
+          </div>
+
+          <p className="muted billing-footnote">
+            Nothing is charged when the free trial ends unless you choose a plan. Upgrading an active Cove Basic subscription
+            applies immediately through Razorpay. Moving from Cove Plus to Cove Basic takes effect at the end of the current
+            billing cycle. Cancelling stops the next renewal; you keep your plan until the paid period ends. Customer
+            payments to your shop are never part of this page. See the{' '}
+            <Link to="/refund-policy">Refund &amp; Cancellation Policy</Link> and{' '}
+            <Link to="/terms">Terms of Service</Link>.
+          </p>
+        </>
       ) : null}
     </>
   );

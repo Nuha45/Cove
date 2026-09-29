@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Archive, RotateCcw, Search, Trash2 } from 'lucide-react';
 import PageIntro from '../../components/ui/PageIntro';
 import Badge from '../../components/ui/Badge';
 import EmptyState from '../../components/ui/EmptyState';
+import BusinessActionDialog from '../../components/admin/BusinessActionDialog';
 import { listAdminBusinesses } from '../../services/adminService';
 import { formatEyebrowDate } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
@@ -21,6 +22,67 @@ export default function AdminBusinessesPage() {
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [action, setAction] = useState(null);
+  const [notice, setNotice] = useState('');
+
+  function handleActionDone(mode, result) {
+    const name = action?.business.name || 'Shop';
+    setAction(null);
+    setNotice(
+      mode === 'delete' ? `${result.name || name} was permanently deleted.`
+        : mode === 'archive' ? `${name} was archived.`
+          : `${name} was restored.`
+    );
+    setReloadKey((key) => key + 1);
+  }
+
+  function statusBadge(business) {
+    if (business.archivedAt) return <Badge tone="neutral">Archived</Badge>;
+    return (
+      <Badge tone={ACCOUNT_STATUS_TONE[business.subscription.accountStatus] || 'neutral'}>
+        {business.subscription.accountStatusLabel}
+      </Badge>
+    );
+  }
+
+  function rowActions(business, { labels = false } = {}) {
+    return (
+      <>
+        {business.archivedAt ? (
+          <>
+            <button
+              className="secondary tiny"
+              type="button"
+              title="Restore shop"
+              aria-label={`Restore ${business.name}`}
+              onClick={() => setAction({ business, mode: 'restore' })}
+            >
+              <RotateCcw size={14} aria-hidden="true" />{labels ? ' Restore' : null}
+            </button>
+            <button
+              className="secondary tiny admin-delete-button"
+              type="button"
+              title="Delete permanently"
+              aria-label={`Delete ${business.name} permanently`}
+              onClick={() => setAction({ business, mode: 'delete' })}
+            >
+              <Trash2 size={14} aria-hidden="true" />{labels ? ' Delete' : null}
+            </button>
+          </>
+        ) : (
+          <button
+            className="secondary tiny"
+            type="button"
+            title="Archive shop"
+            aria-label={`Archive ${business.name}`}
+            onClick={() => setAction({ business, mode: 'archive' })}
+          >
+            <Archive size={14} aria-hidden="true" />{labels ? ' Archive' : null}
+          </button>
+        )}
+      </>
+    );
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -62,6 +124,8 @@ export default function AdminBusinessesPage() {
         title="Businesses"
         subtitle="Search every shop on Cove by business name, link, owner name, or owner email."
       />
+
+      {notice ? <p className="form-success admin-notice" role="status">{notice}</p> : null}
 
       <section className="card table-card">
         <div className="table-tools">
@@ -118,14 +182,11 @@ export default function AdminBusinessesPage() {
                     <strong>{business.owner?.name || '—'}</strong>
                     <small>{business.owner?.email || 'No owner on file'}</small>
                   </div>
-                  <span className="col-center">
-                    <Badge tone={ACCOUNT_STATUS_TONE[business.subscription.accountStatus] || 'neutral'}>
-                      {business.subscription.accountStatusLabel}
-                    </Badge>
-                  </span>
+                  <span className="col-center">{statusBadge(business)}</span>
                   <span className="col-center">{formatShortDate(business.createdAt)}</span>
-                  <span className="col-action">
+                  <span className="col-action admin-row-actions">
                     <Link className="secondary tiny" to={`/admin/businesses/${business.id}`}>View</Link>
+                    {rowActions(business)}
                   </span>
                 </div>
               ))}
@@ -139,12 +200,13 @@ export default function AdminBusinessesPage() {
                       <strong>{business.name}</strong>
                       <small>{business.category}</small>
                     </div>
-                    <Badge tone={ACCOUNT_STATUS_TONE[business.subscription.accountStatus] || 'neutral'}>
-                      {business.subscription.accountStatusLabel}
-                    </Badge>
+                    {statusBadge(business)}
                   </div>
                   <small>{business.owner?.email || 'No owner on file'} · Joined {formatShortDate(business.createdAt)}</small>
-                  <Link className="secondary" to={`/admin/businesses/${business.id}`}>View business</Link>
+                  <div className="admin-card-actions">
+                    <Link className="secondary" to={`/admin/businesses/${business.id}`}>View business</Link>
+                    {rowActions(business, { labels: true })}
+                  </div>
                 </article>
               ))}
             </div>
@@ -163,6 +225,15 @@ export default function AdminBusinessesPage() {
           </>
         ) : null}
       </section>
+
+      {action ? (
+        <BusinessActionDialog
+          business={action.business}
+          mode={action.mode}
+          onClose={() => setAction(null)}
+          onDone={handleActionDone}
+        />
+      ) : null}
     </>
   );
 }

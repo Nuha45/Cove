@@ -1,5 +1,6 @@
 const Business = require('../models/Business');
 const Product = require('../models/Product');
+const billingService = require('./billingService');
 
 // sitemaps.org limit per file.
 const MAX_URLS = 50000;
@@ -38,14 +39,18 @@ function buildSitemapXml(siteUrl, entries) {
   ].join('\n');
 }
 
-// Only public, indexable pages: live storefront homes and their active product pages.
+// Only public, indexable pages: the Cove homepage, legal pages, live storefront homes and their active product pages.
+// Shops closed by the seller or paused for billing are left out.
 async function sitemapEntries() {
-  const businesses = await Business.find({ storefrontActive: { $ne: false } })
+  const sitePages = ['/', '/terms', '/privacy', '/refund-policy'].map((path) => ({ path }));
+  const candidates = await Business.find({ storefrontActive: { $ne: false }, archivedAt: null })
     .select('slug updatedAt')
     .sort({ createdAt: 1 })
     .limit(MAX_URLS)
     .lean();
-  if (!businesses.length) return [];
+  const paused = await billingService.pausedBusinessIds(candidates.map((item) => item._id));
+  const businesses = candidates.filter((item) => !paused.has(String(item._id)));
+  if (!businesses.length) return sitePages;
 
   const slugById = new Map(businesses.map((item) => [String(item._id), item.slug]));
   const products = await Product.find({
@@ -57,10 +62,10 @@ async function sitemapEntries() {
     .limit(MAX_URLS)
     .lean();
 
-  const entries = businesses.map((item) => ({
+  const entries = [...sitePages, ...businesses.map((item) => ({
     path: `/store/${encodeURIComponent(item.slug)}`,
     lastmod: item.updatedAt,
-  }));
+  }))];
   products.forEach((item) => {
     const slug = slugById.get(String(item.businessId));
     if (!slug) return;

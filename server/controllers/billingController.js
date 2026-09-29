@@ -7,8 +7,10 @@ const getBilling = asyncHandler(async (req, res) => {
 });
 
 const createSubscription = asyncHandler(async (req, res) => {
-  // Ignore any client-supplied businessId, planId, amount, or status.
-  const result = await billingService.startSubscriptionCheckout(req.businessId);
+  // Only the plan key is read from the client. businessId, planId, amount, and status are ignored.
+  const result = await billingService.startSubscriptionCheckout(req.businessId, {
+    plan: typeof req.body?.plan === 'string' ? req.body.plan : undefined,
+  });
   res.status(201).json(result);
 });
 

@@ -20,4 +20,28 @@ const getBusiness = asyncHandler(async (req, res) => {
   res.json({ business });
 });
 
-module.exports = { getOverview, listBusinesses, getBusiness };
+const archiveBusiness = asyncHandler(async (req, res) => {
+  const business = await adminService.archiveBusiness(req.params.id, req.user);
+  res.json({ business });
+});
+
+const restoreBusiness = asyncHandler(async (req, res) => {
+  const business = await adminService.restoreBusiness(req.params.id, req.user);
+  res.json({ business });
+});
+
+const deleteBusiness = asyncHandler(async (req, res) => {
+  const result = await adminService.deleteBusiness(req.params.id, req.user, {
+    confirmSlug: req.body?.confirmSlug,
+  });
+  res.json(result);
+});
+
+module.exports = {
+  getOverview,
+  listBusinesses,
+  getBusiness,
+  archiveBusiness,
+  restoreBusiness,
+  deleteBusiness,
+};

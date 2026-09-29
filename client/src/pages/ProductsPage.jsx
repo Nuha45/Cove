@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ImagePlus, MoreHorizontal, Package, Plus, Search } from 'lucide-react';
+import { Download, ImagePlus, MoreHorizontal, Package, Plus, Search } from 'lucide-react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
@@ -7,7 +7,8 @@ import EmptyState from '../components/ui/EmptyState';
 import ContextualHelp from '../components/ui/ContextualHelp';
 import ProductModal from '../components/products/ProductModal';
 import ArchiveDialog from '../components/products/ArchiveDialog';
-import { listProducts, updateProduct } from '../services/productService';
+import BulkActions, { BULK_LIMIT } from '../components/products/BulkActions';
+import { downloadProductsCsv, listProducts, updateProduct } from '../services/productService';
 import { formatEyebrowDate, formatPrice, formatUpdated } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
 import { mediaUrl } from '../utils/media';
@@ -19,7 +20,7 @@ const STATUS_TONE = {
 };
 
 export default function ProductsPage() {
-  const { notify } = useOutletContext();
+  const { notify, plan } = useOutletContext();
   const location = useLocation();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
@@ -39,6 +40,66 @@ export default function ProductsPage() {
   const [openMenu, setOpenMenu] = useState('');
   const [actionError, setActionError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [selected, setSelected] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const canBulk = Boolean(plan?.advanced) && status !== 'Archived';
+  const selectedIds = new Set(selected.map((item) => item.id));
+
+  useEffect(() => {
+    setSelected([]);
+  }, [query, status, category]);
+
+  function toggleSelected(product) {
+    setSelected((current) => {
+      if (current.some((item) => item.id === product.id)) {
+        return current.filter((item) => item.id !== product.id);
+      }
+      if (current.length >= BULK_LIMIT) {
+        notify(`You can select up to ${BULK_LIMIT} products at a time.`);
+        return current;
+      }
+      return [...current, { id: product.id, name: product.name }];
+    });
+  }
+
+  const selectable = products.filter((product) => product.status !== 'Archived');
+  const allOnPageSelected = selectable.length > 0 && selectable.every((product) => selectedIds.has(product.id));
+
+  function togglePage() {
+    setSelected((current) => {
+      if (allOnPageSelected) {
+        const pageIds = new Set(selectable.map((product) => product.id));
+        return current.filter((item) => !pageIds.has(item.id));
+      }
+      const next = [...current];
+      selectable.forEach((product) => {
+        if (next.length < BULK_LIMIT && !next.some((item) => item.id === product.id)) {
+          next.push({ id: product.id, name: product.name });
+        }
+      });
+      return next;
+    });
+  }
+
+  async function exportCsv(ids = []) {
+    setExporting(true);
+    try {
+      await downloadProductsCsv(ids);
+    } catch (err) {
+      notify(getErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleBulkDone(result) {
+    const count = result.modified;
+    notify(count === 0
+      ? 'No products needed changes.'
+      : `Updated ${count} ${count === 1 ? 'product' : 'products'}.`);
+    setSelected([]);
+    setReloadKey((current) => current + 1);
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -188,8 +249,23 @@ export default function ProductsPage() {
               <option value="Archived">Archived</option>
               <option value="all">All statuses</option>
             </select>
+            {plan?.advanced ? (
+              <button className="secondary tiny" type="button" onClick={() => exportCsv()} disabled={exporting}>
+                <Download size={14} /> {exporting && selected.length === 0 ? 'Exporting...' : 'Export CSV'}
+              </button>
+            ) : null}
           </div>
         </div>
+
+        {canBulk && selected.length > 0 ? (
+          <BulkActions
+            selected={selected}
+            onClear={() => setSelected([])}
+            onDone={handleBulkDone}
+            onExport={() => exportCsv(selected.map((item) => item.id))}
+            exporting={exporting}
+          />
+        ) : null}
 
         {loadState === 'loading' ? (
           <div className="panel-state">Loading your products...</div>
@@ -225,7 +301,18 @@ export default function ProductsPage() {
             <div className="list-summary">{total} {total === 1 ? 'product' : 'products'}</div>
             <div className="product-table">
               <div className="table-head">
-                <span>Product</span>
+                {canBulk ? (
+                  <span className="select-head">
+                    <input
+                      type="checkbox"
+                      className="row-check"
+                      checked={allOnPageSelected}
+                      onChange={togglePage}
+                      aria-label="Select all products on this page"
+                    />
+                    Product
+                  </span>
+                ) : <span>Product</span>}
                 <span>Category</span>
                 <span>Price</span>
                 <span>Stock</span>
@@ -233,8 +320,18 @@ export default function ProductsPage() {
                 <span />
               </div>
               {products.map((product) => (
-                <div className="table-row" key={product.id}>
+                <div className={`table-row${selectedIds.has(product.id) ? ' row-selected' : ''}`} key={product.id}>
                   <div className="product-cell">
+                    {canBulk ? (
+                      <input
+                        type="checkbox"
+                        className="row-check"
+                        checked={selectedIds.has(product.id)}
+                        disabled={product.status === 'Archived'}
+                        onChange={() => toggleSelected(product)}
+                        aria-label={`Select ${product.name}`}
+                      />
+                    ) : null}
                     <ProductThumb product={product} />
                     <div>
                       <strong>{product.name}</strong>
@@ -265,7 +362,17 @@ export default function ProductsPage() {
 
             <div className="product-cards">
               {products.map((product) => (
-                <article className="product-card" key={product.id}>
+                <article className={`product-card${canBulk ? ' selectable' : ''}${selectedIds.has(product.id) ? ' row-selected' : ''}`} key={product.id}>
+                  {canBulk ? (
+                    <input
+                      type="checkbox"
+                      className="row-check card-check"
+                      checked={selectedIds.has(product.id)}
+                      disabled={product.status === 'Archived'}
+                      onChange={() => toggleSelected(product)}
+                      aria-label={`Select ${product.name}`}
+                    />
+                  ) : null}
                   <ProductThumb product={product} large />
                   <div>
                     <strong>{product.name}</strong>

@@ -15,7 +15,14 @@ export default function TopBar({ onMenu, menuOpen = false }) {
 
   return (
     <header className="topbar">
-      <button className="mobile-menu" type="button" aria-label={menuOpen ? 'Close menu' : 'Open menu'} onClick={onMenu}>
+      <button
+        className="mobile-menu"
+        type="button"
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={menuOpen}
+        aria-controls="workspace-sidebar"
+        onClick={onMenu}
+      >
         {menuOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
       <div className="mobile-brand" aria-label="Cove">

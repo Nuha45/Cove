@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/layout/Sidebar';
 import TopBar from '../components/layout/TopBar';
@@ -14,6 +14,7 @@ import {
   shouldAutoOpenOnboarding,
 } from '../utils/onboarding';
 import { listProducts } from '../services/productService';
+import { getBilling } from '../services/billingService';
 import { copyText, storefrontUrl } from '../utils/storefront';
 
 const OPEN_FLAG = 'cove-open-onboarding';
@@ -25,9 +26,36 @@ export default function DashboardLayout() {
   const [activeProductCount, setActiveProductCount] = useState(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [plan, setPlan] = useState({
+    loading: true, advanced: false, inTrial: false, trialEnded: false, storePaused: false, access: 'ok', key: 'pro',
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const businessId = business?.id;
+
+  // UI hint only. Plan features and the store pause are enforced on the server.
+  const refreshPlan = useCallback(async () => {
+    try {
+      const result = await getBilling();
+      setPlan({
+        loading: false,
+        advanced: Boolean(result.entitlements?.advanced),
+        inTrial: Boolean(result.entitlements?.inTrial),
+        trialEnded: Boolean(result.entitlements?.trialEnded),
+        storePaused: Boolean(result.store?.paused),
+        access: result.access || 'ok',
+        key: result.subscription?.plan || 'pro',
+      });
+    } catch {
+      setPlan({
+        loading: false, advanced: false, inTrial: false, trialEnded: false, storePaused: false, access: 'ok', key: 'pro',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (businessId) refreshPlan();
+  }, [businessId, refreshPlan]);
 
   const openOnboarding = useCallback((options = {}) => {
     if (options.reset && !businessId) return;
@@ -180,11 +208,26 @@ export default function DashboardLayout() {
       <main className="main">
         <TopBar onMenu={() => setMobileNav((open) => !open)} menuOpen={mobileNav} />
         <div className="content">
+          {(plan.storePaused || plan.access === 'trial_ended') && location.pathname !== '/billing' ? (
+            <div className="billing-callout warn plan-banner" role="status">
+              <div>
+                <strong>{plan.access === 'trial_ended' ? 'Your trial has ended' : 'Your Cove store is paused'}</strong>
+                <p>
+                  {plan.storePaused
+                    ? 'Choose a plan to reopen your Cove store. Your products, orders and customers are safe.'
+                    : 'Choose a plan to keep using Cove. Cove Basic is ₹599/month and Cove Plus is ₹899/month.'}
+                </p>
+              </div>
+              <Link className="primary" to="/billing">View plans</Link>
+            </div>
+          ) : null}
           <Outlet
             context={{
               notify,
               openOnboarding,
               activeProductCount: activeProductCount ?? 0,
+              plan,
+              refreshPlan,
             }}
           />
         </div>

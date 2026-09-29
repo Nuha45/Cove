@@ -3,6 +3,7 @@ import {
   CircleHelp,
   ClipboardList,
   CreditCard,
+  FileText,
   Heart,
   LayoutDashboard,
   Package,
@@ -33,6 +34,12 @@ export const navItems = [
     subtitle: 'Orders placed through your storefront appear here automatically.',
     emptyTitle: 'No orders yet',
     emptyText: 'When customers order through your storefront, they’ll appear here.',
+  },
+  {
+    label: 'Invoices',
+    to: '/invoices',
+    icon: FileText,
+    subtitle: 'PDF invoices for your orders.',
   },
   {
     label: 'Customers',

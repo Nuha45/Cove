@@ -18,7 +18,10 @@ import EmptyState from '../components/ui/EmptyState';
 import Badge from '../components/ui/Badge';
 import GettingStartedCard from '../components/onboarding/GettingStartedCard';
 import { listOrders } from '../services/orderService';
-import { listProducts } from '../services/productService';
+import { getInventory, listProducts } from '../services/productService';
+import { getPerformance } from '../services/analyticsService';
+import Funnel from '../components/analytics/Funnel';
+import AdvancedLock from '../components/ui/AdvancedLock';
 import { listCustomerWants } from '../services/customerWantService';
 import { formatEyebrowDate, formatPrice, greeting } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
@@ -36,6 +39,38 @@ function stockLabel(quantity) {
   return `${count} in stock`;
 }
 
+function percentLabel(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2)}%` : '—';
+}
+
+function WeekPerformance({ week, onOpen }) {
+  return (
+    <section className="card week-card">
+      <SectionHead title="Last 7 days" action="Open analytics" onAction={onOpen} />
+      {week === null ? <div className="skeleton-block" aria-hidden="true" /> : null}
+      {week?.failed ? <p className="muted">Store performance is unavailable right now.</p> : null}
+      {week && !week.failed ? (
+        <div className="week-layout">
+          <dl className="week-metrics">
+            <div><dt>Visitors</dt><dd>{Number(week.metrics?.uniqueVisitors || 0).toLocaleString('en-IN')}</dd></div>
+            <div><dt>Orders</dt><dd>{Number(week.metrics?.orders || 0).toLocaleString('en-IN')}</dd></div>
+            <div><dt>Revenue</dt><dd>{formatPrice(week.metrics?.revenue)}</dd></div>
+            <div><dt>Conversion</dt><dd>{percentLabel(week.metrics?.conversionRate)}</dd></div>
+          </dl>
+          {week.metrics?.uniqueVisitors > 0 ? (
+            <Funnel steps={week.funnel} />
+          ) : (
+            <EmptyState
+              title="No visitors in the last 7 days"
+              text="Share your storefront link. Visits, product views and add-to-carts will appear here."
+            />
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function readChecklistHidden(businessId) {
   try {
     return window.localStorage.getItem(`${CHECKLIST_HIDE_PREFIX}${businessId}`) === '1';
@@ -46,8 +81,11 @@ function readChecklistHidden(businessId) {
 
 export default function DashboardPage() {
   const { user, business } = useAuth();
-  const { openOnboarding, activeProductCount } = useOutletContext();
+  const { openOnboarding, activeProductCount, plan } = useOutletContext();
+  const advanced = Boolean(plan?.advanced);
   const navigate = useNavigate();
+  const [week, setWeek] = useState(null);
+  const [lowStockLimit, setLowStockLimit] = useState(LOW_STOCK_MAX);
   const firstName = user?.name?.split(' ')[0] || 'there';
   const [summary, setSummary] = useState(null);
   const [attention, setAttention] = useState(null);
@@ -106,14 +144,29 @@ export default function DashboardPage() {
         setWantError(getErrorMessage(err));
       });
 
-    listProducts({ limit: 24 })
-      .then((result) => {
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (plan?.loading) return undefined;
+    let cancelled = false;
+
+    const request = advanced
+      ? getInventory().then((result) => {
+        setLowStockLimit(result.threshold);
+        return [...result.outOfStock, ...result.lowStock];
+      })
+      : listProducts({ limit: 24 }).then((result) => (result.products || [])
+        .filter((product) => product.status !== 'Archived' && Number(product.stockQuantity) <= LOW_STOCK_MAX));
+
+    request
+      .then((items) => {
         if (cancelled) return;
-        const items = (result.products || [])
-          .filter((product) => product.status !== 'Archived' && Number(product.stockQuantity) <= LOW_STOCK_MAX)
+        setLowStock([...items]
           .sort((a, b) => Number(a.stockQuantity) - Number(b.stockQuantity))
-          .slice(0, 5);
-        setLowStock(items);
+          .slice(0, 5));
         setLowStockError('');
       })
       .catch((err) => {
@@ -122,17 +175,28 @@ export default function DashboardPage() {
         setLowStockError(getErrorMessage(err));
       });
 
+    if (advanced) {
+      getPerformance({ range: '7d' })
+        .then((result) => {
+          if (!cancelled) setWeek(result);
+        })
+        .catch(() => {
+          if (!cancelled) setWeek({ failed: true });
+        });
+    }
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [plan?.loading, advanced]);
 
   const gettingStartedItems = useMemo(
     () => buildGettingStartedItems({ business, activeProductCount: activeProductCount || 0 }),
     [business, activeProductCount],
   );
 
-  const shopLive = business?.storefrontActive !== false && Boolean(business?.slug);
+  const billingPaused = Boolean(plan?.storePaused);
+  const shopLive = business?.storefrontActive !== false && Boolean(business?.slug) && !billingPaused;
 
   function hideChecklist() {
     try {
@@ -155,7 +219,9 @@ export default function DashboardPage() {
         subtitle={
           shopLive
             ? `${business?.name || 'Your shop'} is live. Here’s what needs your attention today.`
-            : `${business?.name || 'Your shop'} is paused. Turn it back on in Settings when you’re ready.`
+            : billingPaused
+              ? `${business?.name || 'Your shop'} is paused. Choose a plan in Billing to reopen your Cove store.`
+              : `${business?.name || 'Your shop'} is paused. Turn it back on in Settings when you’re ready.`
         }
         action={
           <button className="primary" type="button" onClick={() => navigate('/products', { state: { add: true } })}>
@@ -169,8 +235,8 @@ export default function DashboardPage() {
           <span className="dashboard-status-dot" aria-hidden="true" />
           <span>{shopLive ? 'Storefront live' : 'Storefront paused'}</span>
           {!shopLive ? (
-            <button type="button" onClick={() => navigate('/settings?tab=storefront')}>
-              Open Settings
+            <button type="button" onClick={() => navigate(billingPaused ? '/billing' : '/settings?tab=storefront')}>
+              {billingPaused ? 'View plans' : 'Open Settings'}
             </button>
           ) : null}
         </div>
@@ -206,7 +272,7 @@ export default function DashboardPage() {
           icon={WalletCards}
           label="Pending payments"
           value={summary && !summary.failed ? formatPrice(summary.pendingPaymentTotal) : '—'}
-          change={summary?.failed ? 'Unavailable' : summary ? `${summary.pendingPayment} orders` : 'Loading'}
+          change={summary?.failed ? 'Unavailable' : summary ? `${summary.pendingPayment} ${summary.pendingPayment === 1 ? 'order' : 'orders'}` : 'Loading'}
           color="#FFF1E4"
         />
         <StatCard
@@ -225,6 +291,15 @@ export default function DashboardPage() {
           color="#FFE8DC"
         />
       </div>
+
+      {advanced ? <WeekPerformance week={week} onOpen={() => navigate('/analytics?tab=performance')} /> : null}
+      {!plan?.loading && !advanced ? (
+        <AdvancedLock
+          compact
+          title="See who visits your store and what they add to cart"
+          text="Cove Plus adds visitor tracking, a conversion funnel, weekly reports and PDF invoices."
+        />
+      ) : null}
 
       <div className="dashboard-grid">
         <section className="card">
@@ -288,7 +363,10 @@ export default function DashboardPage() {
           {lowStock === null ? <div className="skeleton-block" aria-hidden="true" /> : null}
           {lowStockError ? <p className="form-error">{lowStockError}</p> : null}
           {!lowStockError && lowStock?.length === 0 ? (
-            <EmptyState title="Stock looks healthy" text="Products with 2 or fewer left will show up here." />
+            <EmptyState
+              title="Stock looks healthy"
+              text={`Products with ${lowStockLimit} or fewer left will show up here.`}
+            />
           ) : null}
           {!lowStockError && lowStock?.length > 0 ? (
             <div className="attention-list">

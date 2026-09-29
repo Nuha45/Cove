@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { BookOpen, RotateCcw } from 'lucide-react';
+import { ArrowRight, BookOpen, RotateCcw } from 'lucide-react';
 import PageIntro from '../components/ui/PageIntro';
 import { HELP_CATEGORIES } from '../content/helpArticles';
 import { useAuth } from '../context/AuthContext';
@@ -11,13 +11,13 @@ export default function HelpPage() {
   const { notify, openOnboarding } = useOutletContext();
   const [activeId, setActiveId] = useState(HELP_CATEGORIES[0]?.articles[0]?.id || '');
 
-  const activeArticle = useMemo(() => {
-    for (const category of HELP_CATEGORIES) {
-      const found = category.articles.find((article) => article.id === activeId);
-      if (found) return { ...found, category: category.title };
-    }
-    return null;
-  }, [activeId]);
+  const flatArticles = useMemo(
+    () => HELP_CATEGORIES.flatMap((category) => category.articles.map((article) => ({ ...article, category: category.title }))),
+    [],
+  );
+  const activeIndex = flatArticles.findIndex((article) => article.id === activeId);
+  const activeArticle = activeIndex >= 0 ? flatArticles[activeIndex] : null;
+  const nextArticle = activeIndex >= 0 ? flatArticles[activeIndex + 1] : null;
 
   function restartTour() {
     if (!business?.id) {
@@ -81,7 +81,15 @@ export default function HelpPage() {
             <>
               <p className="eyebrow">{activeArticle.category}</p>
               <h2>{activeArticle.title}</h2>
-              <p>{activeArticle.body}</p>
+              <p className="help-article-body">{activeArticle.body}</p>
+              <div className="help-article-footer">
+                <p className="muted">Still stuck? Replay the welcome tour above.</p>
+                {nextArticle && (
+                  <button type="button" className="help-article-next" onClick={() => setActiveId(nextArticle.id)}>
+                    Next: {nextArticle.title} <ArrowRight size={15} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <p className="muted">Choose a topic to learn more.</p>

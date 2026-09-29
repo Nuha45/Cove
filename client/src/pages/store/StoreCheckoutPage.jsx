@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -7,7 +7,14 @@ import { formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
 import { enabledCheckoutMethods, paymentMethodIcon } from '../../utils/payments';
 import { saveConfirmation } from '../../utils/storefront';
+import { EMPTY_ADDRESS, addressErrors, formatAddress } from '../../utils/address';
 import StorePaymentDetails from './StorePaymentDetails';
+
+function newCheckoutKey() {
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export default function StoreCheckoutPage() {
   const { slug } = useParams();
@@ -32,13 +39,21 @@ export default function StoreCheckoutPage() {
     phone: '',
     email: '',
     deliveryMethod: defaultMethod,
-    deliveryAddress: '',
+    ...EMPTY_ADDRESS,
+    city: business?.city || '',
     notes: '',
     paymentMethod: '',
   });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Reused for retries of this checkout so a lost response can never place the order twice.
+  const [checkoutKey] = useState(newCheckoutKey);
+  const errorRef = useRef(null);
+
+  useEffect(() => {
+    if (formError) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [formError]);
 
   const paymentOptions = useMemo(
     () => enabledCheckoutMethods(payments, form.deliveryMethod, currency),
@@ -96,8 +111,8 @@ export default function StoreCheckoutPage() {
     if (form.deliveryMethod === 'Delivery' && !deliveryEnabled) {
       next.deliveryMethod = 'Delivery is not available for this shop.';
     }
-    if (form.deliveryMethod === 'Delivery' && form.deliveryAddress.trim().length < 5) {
-      next.deliveryAddress = 'Please enter a delivery address.';
+    if (form.deliveryMethod === 'Delivery') {
+      Object.assign(next, addressErrors(form, { requirePostalCode: currency === 'INR' }));
     }
     if (paymentOptions.length && !form.paymentMethod) {
       next.paymentMethod = 'Please choose how you will pay.';
@@ -125,12 +140,17 @@ export default function StoreCheckoutPage() {
           quantity: item.quantity,
         })),
         deliveryMethod: form.deliveryMethod,
-        deliveryAddress: form.deliveryMethod === 'Delivery' ? form.deliveryAddress.trim() : undefined,
+        deliveryAddress: form.deliveryMethod === 'Delivery' ? formatAddress(form) : undefined,
         notes: form.notes.trim(),
         paymentMethod: form.paymentMethod || undefined,
+        checkoutKey,
       });
 
-      saveConfirmation(slug, result);
+      try {
+        saveConfirmation(slug, result);
+      } catch {
+        // Storage can be full or blocked; the confirmation link still works.
+      }
       clear();
       const token = result.confirmationToken
         ? `?c=${encodeURIComponent(result.confirmationToken)}`
@@ -180,8 +200,8 @@ export default function StoreCheckoutPage() {
 
       <form className="store-checkout-grid" onSubmit={handleSubmit} noValidate>
         <section className="store-card">
-          {formError ? <p className="form-error">{formError}</p> : null}
-          {errors.items ? <p className="form-error">{errors.items}</p> : null}
+          {formError ? <p className="form-error" role="alert" ref={errorRef}>{formError}</p> : null}
+          {errors.items ? <p className="form-error" role="alert">{errors.items}</p> : null}
           <div className="form-grid">
             <label className="wide">
               Your name
@@ -207,11 +227,76 @@ export default function StoreCheckoutPage() {
               {errors.deliveryMethod ? <span className="field-error">{errors.deliveryMethod}</span> : null}
             </label>
             {form.deliveryMethod === 'Delivery' ? (
-              <label className="wide">
-                Delivery address
-                <textarea name="deliveryAddress" autoComplete="street-address" value={form.deliveryAddress} onChange={update} maxLength={200} />
+              <fieldset className="wide store-address">
+                <legend>Delivery address</legend>
+                <p className="muted store-address-hint">
+                  Add enough detail for the seller to find you without calling.
+                </p>
+                <div className="store-address-grid">
+                  <label className="wide">
+                    House / flat no. and building
+                    <input
+                      name="addressLine1"
+                      autoComplete="address-line1"
+                      value={form.addressLine1}
+                      onChange={update}
+                      maxLength={100}
+                      placeholder="Flat 4B, Sea View Apartments"
+                    />
+                    {errors.addressLine1 ? <span className="field-error">{errors.addressLine1}</span> : null}
+                  </label>
+                  <label className="wide">
+                    Street, area or locality
+                    <input
+                      name="addressLine2"
+                      autoComplete="address-line2"
+                      value={form.addressLine2}
+                      onChange={update}
+                      maxLength={100}
+                      placeholder="Sector 17, Vashi"
+                    />
+                    {errors.addressLine2 ? <span className="field-error">{errors.addressLine2}</span> : null}
+                  </label>
+                  <label className="wide">
+                    Landmark <span className="hint-inline">(optional)</span>
+                    <input
+                      name="landmark"
+                      value={form.landmark}
+                      onChange={update}
+                      maxLength={80}
+                      placeholder="Near Inorbit Mall"
+                    />
+                  </label>
+                  <label>
+                    City
+                    <input
+                      name="city"
+                      autoComplete="address-level2"
+                      value={form.city}
+                      onChange={update}
+                      maxLength={60}
+                      placeholder="Navi Mumbai"
+                    />
+                    {errors.city ? <span className="field-error">{errors.city}</span> : null}
+                  </label>
+                  <label>
+                    {currency === 'INR' ? 'Pincode' : (
+                      <>Postal code <span className="hint-inline">(optional)</span></>
+                    )}
+                    <input
+                      name="postalCode"
+                      autoComplete="postal-code"
+                      inputMode={currency === 'INR' ? 'numeric' : 'text'}
+                      value={form.postalCode}
+                      onChange={update}
+                      maxLength={10}
+                      placeholder={currency === 'INR' ? '400703' : ''}
+                    />
+                    {errors.postalCode ? <span className="field-error">{errors.postalCode}</span> : null}
+                  </label>
+                </div>
                 {errors.deliveryAddress ? <span className="field-error">{errors.deliveryAddress}</span> : null}
-              </label>
+              </fieldset>
             ) : null}
 
             <div className="wide store-pay-section">

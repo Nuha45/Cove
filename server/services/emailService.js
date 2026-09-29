@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const env = require('../config/env');
 
 const memoryOutbox = [];
+let warnedUnconfigured = false;
 
 function envValue(name, fallback = '') {
   if (Object.prototype.hasOwnProperty.call(process.env, name)) {
@@ -170,7 +171,12 @@ async function deliver({ to, subject, html, text, meta }) {
   const { provider, from, apiKey } = readEmailEnv();
 
   if (!provider) {
-    if (env.nodeEnv !== 'production') {
+    if (env.nodeEnv === 'production') {
+      if (!warnedUnconfigured) {
+        warnedUnconfigured = true;
+        console.warn('[email] EMAIL_PROVIDER is not set. Emails (password resets, order alerts) are not being sent.');
+      }
+    } else {
       console.info('[email]', {
         to,
         subject,
@@ -271,13 +277,14 @@ async function sendPasswordReset({ to, name, resetUrl }) {
   return result;
 }
 
-async function sendSellerNewOrder({ to, businessName, order, orderUrl }) {
+async function sendSellerNewOrder({ to, businessName, order, orderUrl, currency }) {
   const subject = `New order received · ${order.orderNumber}`;
+  const total = formatMoney(order.total, currency);
   const text = [
     `${businessName} received a new order.`,
     `Order: ${order.orderNumber}`,
     `Customer: ${order.customer?.name || 'Customer'}`,
-    `Total: ${order.total}`,
+    `Total: ${total}`,
     orderUrl ? `Open: ${orderUrl}` : '',
   ].filter(Boolean).join('\n');
 
@@ -285,7 +292,7 @@ async function sendSellerNewOrder({ to, businessName, order, orderUrl }) {
     title: 'New order received',
     bodyHtml: `
       <p><strong>${escapeHtml(order.orderNumber)}</strong> from ${escapeHtml(order.customer?.name || 'a customer')}</p>
-      <p>Total: <strong>${escapeHtml(String(order.total))}</strong></p>
+      <p>Total: <strong>${escapeHtml(total)}</strong></p>
       ${orderUrl ? `<p><a href="${escapeHtml(orderUrl)}">View order</a></p>` : ''}
     `,
   });
@@ -311,29 +318,30 @@ async function sendSellerPaymentSubmitted({ to, businessName, order, orderUrl })
   const text = [
     `A customer submitted a payment reference for ${order.orderNumber}.`,
     order.paymentReference ? `Reference: ${order.paymentReference}` : '',
-    'This is not verified payment. Confirm it yourself in Cove.',
+    'Cove has not verified this payment. Check that the money reached you, then mark the order as paid in Cove.',
     orderUrl ? `Open: ${orderUrl}` : '',
   ].filter(Boolean).join('\n');
   const html = wrapHtml({
     title: 'Payment submitted',
     bodyHtml: `
-      <p>Customer submitted payment details for <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
+      <p>A customer shared a payment reference for <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
       ${order.paymentReference ? `<p>Reference: ${escapeHtml(order.paymentReference)}</p>` : ''}
-      <p style="color:#8a7b6c;font-size:13px;">This is not verified payment. Confirm it yourself in Cove.</p>
+      <p style="color:#8a7b6c;font-size:13px;">Cove has not verified this payment. Check that the money reached you, then mark the order as paid in Cove.</p>
       ${orderUrl ? `<p><a href="${escapeHtml(orderUrl)}">Review order</a></p>` : ''}
     `,
   });
   return sendEmail({ to, subject, html, text, meta: { kind: 'payment_submitted', orderId: order.id } });
 }
 
-async function sendCustomerPaymentVerified({ to, businessName, order }) {
+async function sendCustomerPaymentVerified({ to, businessName, order, currency }) {
   const subject = `Payment confirmed · ${order.orderNumber}`;
-  const text = `${businessName} confirmed payment for order ${order.orderNumber}.`;
+  const total = formatMoney(order.total, currency);
+  const text = `${businessName} confirmed your payment of ${total} for order ${order.orderNumber}.`;
   const html = wrapHtml({
     title: 'Payment confirmed',
     bodyHtml: `
       <p>${escapeHtml(businessName)} confirmed payment for order <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
-      <p>Total: <strong>${escapeHtml(String(order.total))}</strong></p>
+      <p>Total: <strong>${escapeHtml(total)}</strong></p>
     `,
   });
   return sendEmail({ to, subject, html, text, meta: { kind: 'payment_verified', orderId: order.id } });
@@ -342,19 +350,138 @@ async function sendCustomerPaymentVerified({ to, businessName, order }) {
 async function sendSellerCustomerWant({ to, businessName, wantPreview, wantsUrl }) {
   const subject = 'New customer request';
   const text = [
-    `${businessName} received a new Customer Want.`,
+    `${businessName} received a new customer request.`,
     wantPreview,
     wantsUrl ? `Open: ${wantsUrl}` : '',
   ].filter(Boolean).join('\n');
   const html = wrapHtml({
     title: 'New customer request',
     bodyHtml: `
-      <p>${escapeHtml(businessName)} received a new Customer Want.</p>
+      <p>${escapeHtml(businessName)} received a new customer request.</p>
       <p>${escapeHtml(wantPreview)}</p>
       ${wantsUrl ? `<p><a href="${escapeHtml(wantsUrl)}">View requests</a></p>` : ''}
     `,
   });
   return sendEmail({ to, subject, html, text, meta: { kind: 'customer_want' } });
+}
+
+function formatMoney(amount, currency = 'INR') {
+  const value = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(2)}`;
+  }
+}
+
+async function sendSellerLowStock({ to, businessName, products, threshold, productsUrl }) {
+  const subject = products.length === 1
+    ? `Low stock · ${products[0].name}`
+    : `Low stock · ${products.length} products`;
+  const lines = products.map((item) => `${item.name}: ${item.stock === 0 ? 'out of stock' : `${item.stock} left`}`);
+  const text = [
+    `Some products in ${businessName} are at or below your low-stock level (${threshold}).`,
+    ...lines,
+    productsUrl ? `Manage stock: ${productsUrl}` : '',
+  ].filter(Boolean).join('\n');
+  const html = wrapHtml({
+    title: 'Low stock alert',
+    bodyHtml: `
+      <p style="line-height:1.5;">These products are at or below your low-stock level of <strong>${escapeHtml(String(threshold))}</strong>:</p>
+      <ul style="line-height:1.7;padding-left:18px;">
+        ${products.map((item) => `<li>${escapeHtml(item.name)} — <strong>${item.stock === 0 ? 'out of stock' : `${escapeHtml(String(item.stock))} left`}</strong></li>`).join('')}
+      </ul>
+      ${productsUrl ? `<p><a href="${escapeHtml(productsUrl)}">Manage stock</a></p>` : ''}
+    `,
+  });
+  return sendEmail({ to, subject, html, text, meta: { kind: 'low_stock', count: products.length } });
+}
+
+async function sendCustomerOrderConfirmation({ to, businessName, order, currency, confirmationUrl, invoiceUrl }) {
+  const subject = `Order received · ${order.orderNumber}`;
+  const total = formatMoney(order.total, currency);
+  const text = [
+    `Thanks for your order with ${businessName}.`,
+    `Order: ${order.orderNumber}`,
+    ...order.items.map((item) => `${item.quantity} × ${item.name}`),
+    `Total: ${total}`,
+    `Status: ${order.status}`,
+    confirmationUrl ? `View your order: ${confirmationUrl}` : '',
+    invoiceUrl ? `Invoice (PDF): ${invoiceUrl}` : '',
+  ].filter(Boolean).join('\n');
+  const html = wrapHtml({
+    title: 'Order received',
+    bodyHtml: `
+      <p style="line-height:1.5;">Thanks for your order with <strong>${escapeHtml(businessName)}</strong>.</p>
+      <p style="margin:0 0 12px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: ${escapeHtml(order.status)}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        ${order.items.map((item) => `
+          <tr>
+            <td style="padding:6px 0;border-bottom:1px solid #eadfd4;">${escapeHtml(String(item.quantity))} × ${escapeHtml(item.name)}</td>
+            <td style="padding:6px 0;border-bottom:1px solid #eadfd4;text-align:right;">${escapeHtml(formatMoney(item.subtotal, currency))}</td>
+          </tr>`).join('')}
+        ${Number(order.deliveryFee) > 0 ? `
+          <tr>
+            <td style="padding:6px 0;">Delivery</td>
+            <td style="padding:6px 0;text-align:right;">${escapeHtml(formatMoney(order.deliveryFee, currency))}</td>
+          </tr>` : ''}
+        <tr>
+          <td style="padding:8px 0;font-weight:bold;">Total</td>
+          <td style="padding:8px 0;text-align:right;font-weight:bold;">${escapeHtml(total)}</td>
+        </tr>
+      </table>
+      ${confirmationUrl ? `<p style="margin:20px 0 8px;"><a href="${escapeHtml(confirmationUrl)}">View your order</a></p>` : ''}
+      ${invoiceUrl ? `<p style="margin:0;"><a href="${escapeHtml(invoiceUrl)}">Download invoice (PDF)</a></p>` : ''}
+      <p style="line-height:1.5;font-size:13px;color:#8a7b6c;">Payment is confirmed by the shop directly. Keep this email for your records.</p>
+    `,
+  });
+  return sendEmail({ to, subject, html, text, meta: { kind: 'order_confirmation', orderId: order.id } });
+}
+
+function percentLabel(value) {
+  return value === null || value === undefined ? '—' : `${value.toFixed(2)}%`;
+}
+
+async function sendSellerWeeklyReport({ to, businessName, report, currency, analyticsUrl }) {
+  const subject = `Cove weekly store report · ${businessName}`;
+  const rows = [
+    ['Visitors', String(report.uniqueVisitors)],
+    ['Product views', String(report.productViews)],
+    ['Orders', String(report.orders)],
+    ['Revenue', formatMoney(report.revenue, currency)],
+    ['Add-to-cart rate', percentLabel(report.addToCartRate)],
+    ['Conversion rate', percentLabel(report.conversionRate)],
+  ];
+  const text = [
+    `Cove weekly store report for ${businessName} (${report.rangeLabel})`,
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    report.topViewedProduct ? `Most viewed product: ${report.topViewedProduct}` : '',
+    report.bestSellingProduct ? `Best selling product: ${report.bestSellingProduct}` : '',
+    analyticsUrl ? `Open analytics: ${analyticsUrl}` : '',
+    'You can turn this email off in Settings → Notifications.',
+  ].filter(Boolean).join('\n');
+  const html = wrapHtml({
+    title: 'Weekly store report',
+    bodyHtml: `
+      <p style="margin:0 0 16px;color:#8a7b6c;">${escapeHtml(businessName)} · ${escapeHtml(report.rangeLabel)}</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        ${rows.map(([label, value]) => `
+          <tr>
+            <td style="padding:7px 0;border-bottom:1px solid #eadfd4;">${escapeHtml(label)}</td>
+            <td style="padding:7px 0;border-bottom:1px solid #eadfd4;text-align:right;font-weight:bold;">${escapeHtml(value)}</td>
+          </tr>`).join('')}
+      </table>
+      ${report.topViewedProduct ? `<p style="margin:16px 0 4px;">Most viewed product: <strong>${escapeHtml(report.topViewedProduct)}</strong></p>` : ''}
+      ${report.bestSellingProduct ? `<p style="margin:4px 0;">Best selling product: <strong>${escapeHtml(report.bestSellingProduct)}</strong></p>` : ''}
+      ${analyticsUrl ? `<p style="margin:20px 0 0;"><a href="${escapeHtml(analyticsUrl)}">Open analytics</a></p>` : ''}
+      <p style="line-height:1.5;font-size:12px;color:#8a7b6c;">Visitors are counted anonymously. Turn this email off in Settings → Notifications.</p>
+    `,
+  });
+  return sendEmail({ to, subject, html, text, meta: { kind: 'weekly_report' } });
 }
 
 function getMemoryOutbox() {
@@ -381,6 +508,10 @@ module.exports = {
   sendSellerPaymentSubmitted,
   sendCustomerPaymentVerified,
   sendSellerCustomerWant,
+  sendSellerLowStock,
+  sendCustomerOrderConfirmation,
+  sendSellerWeeklyReport,
+  formatMoney,
   isConfigured,
   getMemoryOutbox,
   clearMemoryOutbox,

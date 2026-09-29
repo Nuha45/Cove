@@ -1,36 +1,24 @@
 import { Link, Outlet, useParams } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
 import CoveLogo from '../../components/brand/CoveLogo';
+import { StoreAnnouncement, StoreBrandContent } from '../../components/storefront/StoreSections';
 import { CartProvider, useCart } from '../../context/CartContext';
-import { initials } from '../../utils/display';
-import { mediaUrl } from '../../utils/media';
-import { appearanceFromBusiness } from '../../utils/storefrontAppearance';
+import { appearanceFromBusiness, storeThemeProps } from '../../utils/storefrontAppearance';
 
 function StoreChrome({ business, initialCatalog }) {
   const { slug } = useParams();
   const { count } = useCart();
-  const shopName = business?.name || 'Shop';
+  // The server already replaced Cove Plus choices with Basic defaults when the shop lacks Cove Plus.
   const appearance = appearanceFromBusiness(business);
 
   return (
-    <div
-      className="public-store"
-      data-theme={appearance.theme}
-      style={{ '--store-accent': appearance.accent }}
-    >
+    <div className="public-store" {...storeThemeProps(appearance)}>
       <a className="skip-link" href="#store-content">Skip to content</a>
+      <StoreAnnouncement text={business?.promotions?.announcement} />
       <header className="store-top">
         <div className="store-top-inner">
           <Link className="store-brand" to={`/store/${slug}`}>
-            {business?.logo ? (
-              <img className="store-mark-img" src={mediaUrl(business.logo)} alt="" />
-            ) : (
-              <span className="store-mark" aria-hidden="true">{initials(shopName, 1)}</span>
-            )}
-            <div>
-              <strong>{shopName}</strong>
-              {business?.city ? <small>{business.city}</small> : null}
-            </div>
+            <StoreBrandContent business={business} />
           </Link>
           <Link className="store-cart-link" to={`/store/${slug}/cart`} aria-label={`Cart, ${count} items`}>
             <ShoppingBag size={18} aria-hidden="true" />
@@ -45,6 +33,8 @@ function StoreChrome({ business, initialCatalog }) {
       <footer className="store-foot">
         <CoveLogo size={22} />
         <span>Powered by Cove</span>
+        <span aria-hidden="true">·</span>
+        <Link to="/privacy">Privacy</Link>
       </footer>
     </div>
   );

@@ -6,6 +6,7 @@ const TYPES = [
   'CUSTOMER_WANT',
   'ORDER_STATUS_UPDATE',
   'PAYMENT_VERIFIED',
+  'LOW_STOCK',
 ];
 
 const notificationSchema = new mongoose.Schema(
@@ -41,7 +42,7 @@ const notificationSchema = new mongoose.Schema(
     },
     relatedEntityType: {
       type: String,
-      enum: ['order', 'customerWant', ''],
+      enum: ['order', 'customerWant', 'product', ''],
       default: '',
     },
     relatedEntityId: {

@@ -193,7 +193,13 @@ describe('admin', { timeout: 180000 }, () => {
       totals.businesses
     );
     assert.equal(typeof overview.trialsEndingSoon.count, 'number');
-    assert.equal(overview.revenue.estimatedMrr, overview.revenue.activeSubscriptions * overview.revenue.pricePerMonth);
+    const { plans } = overview.revenue;
+    assert.deepEqual(plans.map((plan) => [plan.name, plan.pricePerMonth]), [['Cove Basic', 599], ['Cove Plus', 899]]);
+    assert.equal(plans.reduce((sum, plan) => sum + plan.activeSubscriptions, 0), overview.revenue.activeSubscriptions);
+    assert.equal(
+      overview.revenue.estimatedMrr,
+      plans.reduce((sum, plan) => sum + plan.activeSubscriptions * plan.pricePerMonth, 0)
+    );
     assert.ok(Array.isArray(overview.recentSignups));
     assert.ok(overview.recentSignups.length > 0);
     const serialized = JSON.stringify(overview);
@@ -264,6 +270,80 @@ describe('admin', { timeout: 180000 }, () => {
     assert.equal(invalid.status, 404);
     const missing = await api('GET', `/api/admin/businesses/${new mongoose.Types.ObjectId()}`, { token: admin.token });
     assert.equal(missing.status, 404);
+  });
+
+  it('archives, restores and permanently deletes a shop', async () => {
+    const target = await registerTenant('archive');
+    const product = await addProduct(target.token, 'Archive Ring');
+    await addOrder(target.token, product.id, '9876600021');
+
+    const forbidden = await api('POST', `/api/admin/businesses/${target.businessId}/archive`, { token: seller.token });
+    assert.equal(forbidden.status, 403);
+
+    const ownShop = await api('POST', `/api/admin/businesses/${admin.businessId}/archive`, { token: admin.token });
+    assert.equal(ownShop.status, 400);
+
+    const notArchived = await api('DELETE', `/api/admin/businesses/${target.businessId}`, {
+      token: admin.token,
+      body: { confirmSlug: target.slug },
+    });
+    assert.equal(notArchived.status, 400);
+
+    const archived = await api('POST', `/api/admin/businesses/${target.businessId}/archive`, { token: admin.token });
+    assert.equal(archived.status, 200, JSON.stringify(archived.data));
+    assert.ok(archived.data.business.archivedAt);
+
+    const oldSession = await api('GET', '/api/auth/me', { token: target.token });
+    assert.equal(oldSession.status, 401);
+    const login = await api('POST', '/api/auth/login', { body: { email: target.email, password } });
+    assert.equal(login.status, 403);
+    const storefront = await api('GET', `/api/store/${target.slug}`);
+    assert.equal(storefront.status, 404);
+
+    const overview = await api('GET', '/api/admin/overview', { token: admin.token });
+    assert.equal(overview.data.overview.recentSignups.some((item) => item.id === target.businessId), false);
+
+    const restored = await api('POST', `/api/admin/businesses/${target.businessId}/restore`, { token: admin.token });
+    assert.equal(restored.status, 200);
+    assert.equal(restored.data.business.archivedAt, null);
+    const loginAgain = await api('POST', '/api/auth/login', { body: { email: target.email, password } });
+    assert.equal(loginAgain.status, 200, JSON.stringify(loginAgain.data));
+    assert.equal((await api('GET', `/api/store/${target.slug}`)).status, 200);
+
+    await api('POST', `/api/admin/businesses/${target.businessId}/archive`, { token: admin.token });
+    const wrongConfirm = await api('DELETE', `/api/admin/businesses/${target.businessId}`, {
+      token: admin.token,
+      body: { confirmSlug: 'not-the-slug' },
+    });
+    assert.equal(wrongConfirm.status, 400);
+    assert.ok(await Business.exists({ _id: target.businessId }));
+
+    await Subscription.updateOne(
+      { businessId: target.businessId },
+      { $set: { providerSubscriptionId: `sub_test_${stamp}`, status: 'active' } }
+    );
+    const liveSub = await api('DELETE', `/api/admin/businesses/${target.businessId}`, {
+      token: admin.token,
+      body: { confirmSlug: target.slug },
+    });
+    assert.equal(liveSub.status, 409);
+    await Subscription.updateOne({ businessId: target.businessId }, { $set: { status: 'cancelled' } });
+
+    const deleted = await api('DELETE', `/api/admin/businesses/${target.businessId}`, {
+      token: admin.token,
+      body: { confirmSlug: target.slug },
+    });
+    assert.equal(deleted.status, 200, JSON.stringify(deleted.data));
+    assert.equal(deleted.data.deleted.products, 1);
+    assert.equal(deleted.data.deleted.orders, 1);
+    assert.equal(await Business.exists({ _id: target.businessId }), null);
+    assert.equal(await User.exists({ businessId: target.businessId }), null);
+    assert.equal(await Product.exists({ businessId: target.businessId }), null);
+    assert.equal(await Order.exists({ businessId: target.businessId }), null);
+    assert.equal(await Subscription.exists({ businessId: target.businessId }), null);
+
+    const sellerStill = await api('GET', `/api/admin/businesses/${seller.businessId}`, { token: admin.token });
+    assert.equal(sellerStill.data.business.counts.products, 2);
   });
 
   it('public registration cannot create an admin', async () => {

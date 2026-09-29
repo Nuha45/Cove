@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const storeService = require('../services/storeService');
 const customerWantService = require('../services/customerWantService');
+const trackingService = require('../services/trackingService');
 
 const getStorefront = asyncHandler(async (req, res) => {
   const result = await storeService.getStorefront(req.params.slug, {
@@ -8,11 +9,35 @@ const getStorefront = asyncHandler(async (req, res) => {
     category: req.query.category,
   });
 
+  if (result.paused) {
+    res.json({ business: result.business.toPausedStorefront(), products: [], categories: [] });
+    return;
+  }
+
   res.json({
-    business: result.business.toStorefront(),
+    business: result.business.toStorefront({ promotions: result.promotions, plus: result.plus }),
     products: result.products.map((product) => product.toStorefront()),
     categories: result.categories,
   });
+});
+
+// Always 202 so the storefront never learns why an event was or was not recorded.
+const trackEvent = asyncHandler(async (req, res) => {
+  await trackingService.recordEvent(req, req.params.slug, {
+    type: req.body.type,
+    productId: req.body.productId,
+    visitorId: req.body.visitorId,
+    quantity: req.body.quantity,
+  });
+  res.status(202).json({ ok: true });
+});
+
+const getOrderInvoice = asyncHandler(async (req, res) => {
+  const { invoice, pdf } = await storeService.getOrderInvoice(req.params.slug, req.params.token);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${invoice.invoiceNumber}.pdf"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(pdf);
 });
 
 const getProduct = asyncHandler(async (req, res) => {
@@ -40,10 +65,11 @@ const createOrder = asyncHandler(async (req, res) => {
     deliveryAddress: req.body.deliveryAddress,
     notes: req.body.notes,
     paymentMethod: req.body.paymentMethod,
+    checkoutKey: req.body.checkoutKey,
   });
 
-  // Raw token is returned once at create time. It is never logged or stored.
-  res.status(201).json({
+  // Raw token is returned only to the checkout that created the order. It is never logged or stored.
+  res.status(result.replayed ? 200 : 201).json({
     order: result.order.toCustomerConfirmation(),
     business: result.business.toConfirmation(),
     confirmationToken: result.confirmationToken,
@@ -54,7 +80,7 @@ const getOrderConfirmation = asyncHandler(async (req, res) => {
   const result = await storeService.getOrderConfirmation(req.params.slug, req.params.token);
   res.json({
     order: result.order.toCustomerConfirmation(),
-    business: result.business.toConfirmation(),
+    business: result.business.toConfirmation({ paused: result.paused }),
   });
 });
 
@@ -115,6 +141,8 @@ module.exports = {
   getProduct,
   createOrder,
   getOrderConfirmation,
+  getOrderInvoice,
+  trackEvent,
   submitPaymentReference,
   createWant,
   listWantBoard,

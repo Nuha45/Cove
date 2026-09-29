@@ -1,10 +1,36 @@
 const Business = require('../models/Business');
+const Product = require('../models/Product');
 const ApiError = require('../utils/ApiError');
+
+const ADVANCED_SETTING_FIELDS = [
+  'lowStockThreshold',
+  'storefrontAnnouncement',
+  'storefrontPromoTitle',
+  'storefrontPromoText',
+  'storefrontFeaturedProductIds',
+  'storefrontFeaturedCategories',
+];
 const { saveLogo } = require('../utils/businessLogo');
 const { savePaymentQr } = require('../utils/paymentQrImage');
 const { saveStorefrontCover } = require('../utils/storefrontCover');
-const { normalizeTheme, normalizeAccent, normalizeCoverFocus } = require('../utils/storefrontAppearance');
+const {
+  normalizeTheme,
+  normalizeAccent,
+  normalizeBackground,
+  normalizeCoverFocus,
+  isPlusTheme,
+  isPlusAccent,
+} = require('../utils/storefrontAppearance');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
+
+// Theme and accent are shared fields: only the Cove Plus values need Cove Plus.
+// Clearing the background back to the theme default is allowed on every plan.
+function requestsPlusAppearance(input) {
+  const has = (field) => Object.prototype.hasOwnProperty.call(input, field);
+  return (has('storefrontTheme') && isPlusTheme(normalizeTheme(input.storefrontTheme)))
+    || (has('storefrontAccent') && isPlusAccent(normalizeAccent(input.storefrontAccent)))
+    || (has('storefrontBackground') && Boolean(normalizeBackground(input.storefrontBackground)));
+}
 
 function asBoolean(value, fallback) {
   if (typeof value === 'boolean') return value;
@@ -23,6 +49,15 @@ async function getOwnBusiness(businessId) {
 
 async function updateSettings(businessId, input) {
   const business = await getOwnBusiness(businessId);
+
+  if (requestsPlusAppearance(input)) {
+    const billingService = require('./billingService');
+    if (!(await billingService.hasAdvancedAccess(businessId))) {
+      throw new ApiError(403, 'The Atelier and Luxe themes and the extra storefront colors are part of Cove Plus.', [
+        { field: 'plan', message: 'advanced_required' },
+      ]);
+    }
+  }
 
   if (Object.prototype.hasOwnProperty.call(input, 'name')) {
     business.name = String(input.name || '').trim();
@@ -74,6 +109,9 @@ async function updateSettings(businessId, input) {
   }
   if (Object.prototype.hasOwnProperty.call(input, 'storefrontAccent')) {
     business.storefrontAccent = normalizeAccent(input.storefrontAccent);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontBackground')) {
+    business.storefrontBackground = normalizeBackground(input.storefrontBackground);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'storefrontCoverImage')) {
     business.storefrontCoverImage = await saveStorefrontCover(
@@ -133,6 +171,47 @@ async function updateSettings(businessId, input) {
       input.emailCustomerWants,
       business.emailCustomerWants !== false
     );
+  }
+  ['emailLowStock', 'emailWeeklyReport', 'emailOrderConfirmation', 'emailOrderUpdates'].forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(input, field)) {
+      business[field] = asBoolean(input[field], business[field] !== false);
+    }
+  });
+
+  const advancedFields = ADVANCED_SETTING_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(input, field));
+  if (advancedFields.length) {
+    const billingService = require('./billingService');
+    if (!(await billingService.hasAdvancedAccess(businessId))) {
+      throw new ApiError(403, 'Storefront promotions and low stock levels are part of Cove Plus.', [
+        { field: 'plan', message: 'advanced_required' },
+      ]);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'lowStockThreshold')) {
+    business.lowStockThreshold = Math.max(0, Math.min(1000, Math.round(Number(input.lowStockThreshold) || 0)));
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontAnnouncement')) {
+    business.storefrontAnnouncement = String(input.storefrontAnnouncement || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontPromoTitle')) {
+    business.storefrontPromoTitle = String(input.storefrontPromoTitle || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontPromoText')) {
+    business.storefrontPromoText = String(input.storefrontPromoText || '').trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontFeaturedProductIds')) {
+    const requested = [...new Set((input.storefrontFeaturedProductIds || []).map(String))].slice(0, 8);
+    // Keep only products this business owns; order follows the seller's selection.
+    const owned = requested.length
+      ? await Product.find({ _id: { $in: requested }, businessId, status: { $ne: 'Archived' } }).select('_id').lean()
+      : [];
+    const ownedIds = new Set(owned.map((product) => String(product._id)));
+    business.storefrontFeaturedProductIds = requested.filter((id) => ownedIds.has(id));
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'storefrontFeaturedCategories')) {
+    business.storefrontFeaturedCategories = [
+      ...new Set((input.storefrontFeaturedCategories || []).map((item) => String(item).trim()).filter(Boolean)),
+    ].slice(0, 6);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'logo')) {
     business.logo = await saveLogo(businessId, input.logo, business.logo || '');

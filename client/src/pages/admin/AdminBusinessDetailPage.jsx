@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Archive, ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
 import PageIntro from '../../components/ui/PageIntro';
 import Badge from '../../components/ui/Badge';
+import BusinessActionDialog from '../../components/admin/BusinessActionDialog';
 import { getAdminBusiness } from '../../services/adminService';
 import { formatOrderDate } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
@@ -23,6 +24,17 @@ export default function AdminBusinessDetailPage() {
   const [business, setBusiness] = useState(null);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
+  const [actionMode, setActionMode] = useState(null);
+  const navigate = useNavigate();
+
+  function handleActionDone(mode, result) {
+    setActionMode(null);
+    if (mode === 'delete') {
+      navigate('/admin/businesses', { replace: true });
+      return;
+    }
+    setBusiness(result.business);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +111,9 @@ export default function AdminBusinessDetailPage() {
                 </div>
                 <div>
                   <dt>Storefront</dt>
-                  <dd>{business.storefrontActive ? 'Live' : 'Paused'} · /store/{business.slug}</dd>
+                  <dd>
+                    {business.archivedAt ? 'Archived' : business.storefrontActive ? 'Live' : 'Paused'} · /store/{business.slug}
+                  </dd>
                 </div>
                 <div>
                   <dt>Created</dt>
@@ -129,6 +143,10 @@ export default function AdminBusinessDetailPage() {
                   <dd>{BILLING_LABELS[subscription.billingStatus] || subscription.billingStatus}</dd>
                 </div>
                 <div>
+                  <dt>Plan</dt>
+                  <dd>{subscription.planName || '—'}</dd>
+                </div>
+                <div>
                   <dt>Trial</dt>
                   <dd>
                     {subscription.trialEndAt
@@ -152,6 +170,50 @@ export default function AdminBusinessDetailPage() {
               </dl>
             </section>
           </div>
+
+          <section className="card detail-card admin-danger-card">
+            <div className="admin-section-head">
+              <h2>Shop actions</h2>
+              {business.archivedAt ? <Badge tone="neutral">Archived {formatShortDate(business.archivedAt)}</Badge> : null}
+            </div>
+            {business.archivedAt ? (
+              <>
+                <p className="muted">
+                  This shop is offline and its owner cannot log in. Restore it to bring it back, or delete it
+                  permanently with all of its products, orders and customers.
+                </p>
+                <div className="admin-danger-actions">
+                  <button className="secondary" type="button" onClick={() => setActionMode('restore')}>
+                    <RotateCcw size={15} aria-hidden="true" /> Restore shop
+                  </button>
+                  <button className="danger" type="button" onClick={() => setActionMode('delete')}>
+                    <Trash2 size={15} aria-hidden="true" /> Delete permanently
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted">
+                  Archiving takes the storefront offline and signs the owner out. Nothing is deleted, and you can
+                  restore it later. A shop must be archived before it can be deleted.
+                </p>
+                <div className="admin-danger-actions">
+                  <button className="danger" type="button" onClick={() => setActionMode('archive')}>
+                    <Archive size={15} aria-hidden="true" /> Archive shop
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+
+          {actionMode ? (
+            <BusinessActionDialog
+              business={business}
+              mode={actionMode}
+              onClose={() => setActionMode(null)}
+              onDone={handleActionDone}
+            />
+          ) : null}
         </>
       ) : null}
     </>

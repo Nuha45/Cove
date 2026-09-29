@@ -12,6 +12,7 @@ const env = require('../config/env');
 const BCRYPT_ROUNDS = 12;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const GENERIC_RESET_MESSAGE = 'If an account exists for this email, a password reset link has been sent.';
+const ARCHIVED_MESSAGE = 'This shop has been archived. Contact Cove support if you want it restored.';
 let dummyHashPromise;
 
 function dummyPasswordHash() {
@@ -92,6 +93,9 @@ async function login({ email, password }) {
   if (!business) {
     throw new ApiError(401, 'We could not find the business for this account.');
   }
+  if (business.archivedAt) {
+    throw new ApiError(403, ARCHIVED_MESSAGE);
+  }
 
   return { user, business, token: signToken(user) };
 }
@@ -100,6 +104,9 @@ async function getProfile(user) {
   const business = await Business.findById(user.businessId);
   if (!business) {
     throw new ApiError(404, 'We could not find your business.');
+  }
+  if (business.archivedAt) {
+    throw new ApiError(403, ARCHIVED_MESSAGE);
   }
   return { user, business };
 }

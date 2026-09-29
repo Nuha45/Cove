@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const businessService = require('../services/businessService');
+const { NOTIFICATION_FIELDS, PROMOTION_FIELDS } = require('../validators/businessValidator');
 
 const getBusiness = asyncHandler(async (req, res) => {
   const business = await businessService.getOwnBusiness(req.businessId);
@@ -16,11 +17,13 @@ const updateSettings = asyncHandler(async (req, res) => {
   const fields = [
     'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
     'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
-    'storefrontTheme', 'storefrontAccent', 'storefrontCoverImage',
+    'storefrontTheme', 'storefrontAccent', 'storefrontBackground', 'storefrontCoverImage',
     'storefrontCoverFocusX', 'storefrontCoverFocusY',
     'paymentQrEnabled', 'paymentLinkEnabled', 'paymentInstructionsEnabled', 'payOnPickupEnabled',
     'paymentLink', 'paymentQrImage', 'paymentUpiId', 'paymentInstructions',
     'emailNewOrders', 'emailPayments', 'emailCustomerWants',
+    ...NOTIFICATION_FIELDS,
+    ...PROMOTION_FIELDS,
   ];
   fields.forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(req.body, field)) {

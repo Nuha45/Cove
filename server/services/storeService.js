@@ -4,6 +4,7 @@ const Order = require('../models/Order');
 const ApiError = require('../utils/ApiError');
 const orderService = require('./orderService');
 const {
+  confirmationTokenForCheckout,
   createConfirmationToken,
   hashConfirmationToken,
   isConfirmationTokenShape,
@@ -68,15 +69,22 @@ function resolvePaymentMethod(business, requested, deliveryMethod) {
 }
 
 async function getBusinessBySlug(slug) {
-  const business = await Business.findOne({ slug: String(slug || '').toLowerCase().trim() });
+  const business = await Business.findOne({ slug: String(slug || '').toLowerCase().trim(), archivedAt: null });
   if (!business) {
     throw new ApiError(404, 'We could not find that shop.');
   }
   return business;
 }
 
+function billing() {
+  return require('./billingService');
+}
+
 async function getStorefront(slug, { search, category } = {}) {
   const business = await getBusinessBySlug(slug);
+  if (await billing().isStorePaused(business._id)) {
+    return { business, paused: true, products: [], categories: [], promotions: null };
+  }
   const filter = {
     businessId: business._id,
     status: 'Active',
@@ -102,11 +110,58 @@ async function getStorefront(slug, { search, category } = {}) {
       category: { $nin: ['', null] },
     });
 
+  const sortedCategories = categories.sort((a, b) => a.localeCompare(b));
+  const plus = await billing().hasAdvancedAccess(business._id);
   return {
     business,
     products,
-    categories: categories.sort((a, b) => a.localeCompare(b)),
+    categories: sortedCategories,
+    plus,
+    promotions: business.storefrontActive === false || !plus
+      ? null
+      : await buildPromotions(business, sortedCategories),
   };
+}
+
+// Cove Plus storefront content. Only called once Cove Plus access is confirmed.
+async function buildPromotions(business, categories) {
+
+  const featuredIds = (business.storefrontFeaturedProductIds || []).map(String);
+  let featuredProducts = [];
+  if (featuredIds.length) {
+    const found = await Product.find({
+      _id: { $in: featuredIds },
+      businessId: business._id,
+      status: 'Active',
+    });
+    const byId = new Map(found.map((product) => [String(product._id), product]));
+    featuredProducts = featuredIds.map((id) => byId.get(id)).filter(Boolean).map((product) => product.toStorefront());
+  }
+  const available = new Set(categories);
+  const featuredCategories = (business.storefrontFeaturedCategories || []).filter((item) => available.has(item));
+
+  const promotions = {
+    announcement: business.storefrontAnnouncement || '',
+    promoTitle: business.storefrontPromoTitle || '',
+    promoText: business.storefrontPromoText || '',
+    featuredProducts,
+    featuredCategories,
+  };
+  const hasContent = promotions.announcement
+    || promotions.promoTitle
+    || promotions.promoText
+    || featuredProducts.length
+    || featuredCategories.length;
+  return hasContent ? promotions : null;
+}
+
+async function getOrderInvoice(slug, token) {
+  const { business, order } = await getOrderConfirmation(slug, token);
+  if (!(await billing().hasAdvancedAccess(business._id))) {
+    throw new ApiError(404, 'An invoice is not available for this order.');
+  }
+  const invoiceService = require('./invoiceService');
+  return invoiceService.pdfForOrder(business._id, order._id);
 }
 
 async function getProduct(slug, productId) {
@@ -114,6 +169,7 @@ async function getProduct(slug, productId) {
   if (business.storefrontActive === false) {
     throw new ApiError(403, 'This shop is not accepting orders right now.');
   }
+  await billing().assertStoreOpen(business._id);
   const product = await Product.findOne({
     _id: productId,
     businessId: business._id,
@@ -125,12 +181,32 @@ async function getProduct(slug, productId) {
   return { business, product };
 }
 
+const CHECKOUT_KEY_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
+
+async function findCheckoutReplay(businessId, confirmationTokenHash) {
+  if (!confirmationTokenHash) return null;
+  return Order.findOne({ businessId, confirmationTokenHash });
+}
+
 async function createOrder(slug, input) {
   const business = await getBusinessBySlug(slug);
+
+  const checkoutKey = typeof input.checkoutKey === 'string' && CHECKOUT_KEY_PATTERN.test(input.checkoutKey)
+    ? input.checkoutKey
+    : '';
+  const confirmationToken = checkoutKey
+    ? confirmationTokenForCheckout(business._id, checkoutKey)
+    : createConfirmationToken();
+  const confirmationTokenHash = hashConfirmationToken(confirmationToken);
+
+  // A retry of a checkout that already succeeded (lost response, double tap) gets the same order back.
+  const existing = checkoutKey ? await findCheckoutReplay(business._id, confirmationTokenHash) : null;
+  if (existing) return { business, order: existing, confirmationToken, replayed: true };
 
   if (business.storefrontActive === false) {
     throw new ApiError(403, 'This shop is not accepting orders right now.');
   }
+  await billing().assertStoreOpen(business._id);
 
   const pickupEnabled = business.pickupEnabled !== false;
   const deliveryEnabled = business.deliveryEnabled !== false;
@@ -160,30 +236,44 @@ async function createOrder(slug, input) {
 
   // Resolve the shop from the public slug. Ignore any businessId / fee from the browser.
   const deliveryFee = method === 'Delivery' ? roundMoney(business.deliveryFee || 0) : 0;
-  const confirmationToken = createConfirmationToken();
 
-  const order = await orderService.create(business._id, {
-    customer: {
-      name: input.customer.name,
-      phone: input.customer.phone,
-      email: input.customer.email,
-    },
-    items: (input.items || []).map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-    })),
-    deliveryMethod: method,
-    deliveryAddress: input.deliveryAddress,
-    deliveryFee,
-    notes: input.notes,
-    paymentMethod,
-    confirmationTokenHash: hashConfirmationToken(confirmationToken),
-  });
+  let order;
+  try {
+    order = await orderService.create(business._id, {
+      customer: {
+        name: input.customer.name,
+        phone: input.customer.phone,
+        email: input.customer.email,
+      },
+      items: (input.items || []).map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      })),
+      deliveryMethod: method,
+      deliveryAddress: input.deliveryAddress,
+      deliveryFee,
+      notes: input.notes,
+      paymentMethod,
+      confirmationTokenHash,
+    });
+  } catch (err) {
+    // Two identical submissions raced; the other one created the order.
+    const raced = checkoutKey && err?.statusCode === 409
+      ? await findCheckoutReplay(business._id, confirmationTokenHash)
+      : null;
+    if (raced) return { business, order: raced, confirmationToken, replayed: true };
+    throw err;
+  }
 
-  // Non-blocking seller alerts. Failures must not undo the order.
+  // Non-blocking seller alerts and customer confirmation. Failures must not undo the order.
   setImmediate(() => {
     const notifyEvents = require('./notifyEvents');
     notifyEvents.notifyNewOrder({ businessId: business._id, order }).catch(() => {});
+    notifyEvents.notifyCustomerOrderConfirmation({
+      businessId: business._id,
+      order,
+      confirmationToken,
+    }).catch(() => {});
   });
 
   return { business, order, confirmationToken };
@@ -214,11 +304,13 @@ async function getOrderConfirmation(slug, token) {
     throw new ApiError(404, CONFIRMATION_NOT_FOUND);
   }
 
-  return { business, order };
+  const paused = await billing().isStorePaused(business._id);
+  return { business, order, paused };
 }
 
 async function submitPaymentReference(slug, token, input) {
-  const { business, order } = await getOrderConfirmation(slug, token);
+  const { business, order, paused } = await getOrderConfirmation(slug, token);
+  if (paused) await billing().assertStoreOpen(business._id);
 
   if (order.status === 'Cancelled') {
     throw new ApiError(400, 'This order is cancelled and cannot accept payment details.');
@@ -289,6 +381,7 @@ module.exports = {
   getProduct,
   createOrder,
   getOrderConfirmation,
+  getOrderInvoice,
   submitPaymentReference,
   PAYMENT_METHODS,
 };

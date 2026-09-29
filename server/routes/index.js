@@ -8,11 +8,12 @@ const storeRoutes = require('./storeRoutes');
 const customerRoutes = require('./customerRoutes');
 const customerWantRoutes = require('./customerWantRoutes');
 const billingRoutes = require('./billingRoutes');
-const marketingRoutes = require('./marketingRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const adminRoutes = require('./adminRoutes');
 const seoRoutes = require('./seoRoutes');
+const invoiceRoutes = require('./invoiceRoutes');
+const jobRoutes = require('./jobRoutes');
 
 const router = express.Router();
 
@@ -32,11 +33,12 @@ router.use('/orders', orderRoutes);
 router.use('/customers', customerRoutes);
 router.use('/customer-wants', customerWantRoutes);
 router.use('/billing', billingRoutes);
-router.use('/marketing', marketingRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/store', storeRoutes);
 router.use('/admin', adminRoutes);
 router.use('/seo', seoRoutes);
+router.use('/invoices', invoiceRoutes);
+router.use('/jobs', jobRoutes);
 
 module.exports = router;

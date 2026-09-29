@@ -1,15 +1,51 @@
 const User = require('../models/User');
 const Business = require('../models/Business');
+const EmailDelivery = require('../models/EmailDelivery');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const env = require('../config/env');
 
+function appBase() {
+  return env.appUrl.replace(/\/$/, '');
+}
+
 function sellerOrderUrl(orderId) {
-  return `${env.appUrl.replace(/\/$/, '')}/orders/${orderId}`;
+  return `${appBase()}/orders/${orderId}`;
 }
 
 function sellerWantsUrl() {
-  return `${env.appUrl.replace(/\/$/, '')}/customer-wants`;
+  return `${appBase()}/customer-wants`;
+}
+
+// Claims the dedupe key first so retries and duplicate events never send twice.
+// Returns false without sending when the key was already used.
+async function sendOnce({ businessId, dedupeKey, kind }, send) {
+  let claim;
+  try {
+    claim = await EmailDelivery.create({ businessId, dedupeKey, kind, status: 'sending' });
+  } catch (err) {
+    if (err.code === 11000) return false;
+    throw err;
+  }
+  let result;
+  try {
+    result = await send();
+  } catch (err) {
+    result = { ok: false, error: err.message || 'email_failed' };
+  }
+  if (!result?.ok) {
+    // Release the key so a retried job can try again; the failure is already logged by emailService.
+    await EmailDelivery.deleteOne({ _id: claim._id }).catch(() => {});
+    return false;
+  }
+  claim.status = result.skipped ? 'skipped' : 'sent';
+  await claim.save().catch(() => {});
+  return true;
+}
+
+function lowStockThreshold(business) {
+  const value = Number(business?.lowStockThreshold);
+  return Number.isFinite(value) && value >= 0 ? value : 5;
 }
 
 async function getBusinessOwner(businessId) {
@@ -25,6 +61,10 @@ function prefs(business) {
     emailNewOrders: business?.emailNewOrders !== false,
     emailPayments: business?.emailPayments !== false,
     emailCustomerWants: business?.emailCustomerWants !== false,
+    emailLowStock: business?.emailLowStock !== false,
+    emailWeeklyReport: business?.emailWeeklyReport !== false,
+    emailOrderConfirmation: business?.emailOrderConfirmation !== false,
+    emailOrderUpdates: business?.emailOrderUpdates !== false,
   };
 }
 
@@ -43,7 +83,7 @@ async function notifyNewOrder({ businessId, order }) {
       businessId,
       type: 'NEW_ORDER',
       title: 'New order received',
-      message: `${publicOrder.orderNumber} · ${publicOrder.customer?.name || 'Customer'} · ${publicOrder.total}`,
+      message: `${publicOrder.orderNumber} · ${publicOrder.customer?.name || 'Customer'} · ${emailService.formatMoney(publicOrder.total, business.currency || 'INR')}`,
       relatedEntityType: 'order',
       relatedEntityId: publicOrder.id || order._id,
       dedupeKey: `NEW_ORDER:${publicOrder.id || order._id}`,
@@ -55,6 +95,7 @@ async function notifyNewOrder({ businessId, order }) {
         businessName: business.name,
         order: publicOrder,
         orderUrl: sellerOrderUrl(publicOrder.id || order._id),
+        currency: business.currency || 'INR',
       });
     }
   } catch (err) {
@@ -108,6 +149,7 @@ async function notifyPaymentVerified({ businessId, order }) {
       to: email,
       businessName: business.name,
       order: publicOrder,
+      currency: business.currency || 'INR',
     });
   } catch (err) {
     console.error('[notify:payment_verified]', err.message || err);
@@ -118,7 +160,7 @@ async function notifyOrderStatusChanged({ businessId, order, previousStatus }) {
   try {
     if (!previousStatus || previousStatus === order.status) return;
     const business = await getBusiness(businessId);
-    if (!business) return;
+    if (!business || !prefs(business).emailOrderUpdates) return;
     const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
     const email = publicOrder.customer?.email || order.customer?.email;
     if (!email) return;
@@ -165,10 +207,93 @@ async function notifyCustomerWant({ businessId, wantId, preview }) {
   }
 }
 
+// Fires only when an order moves a product from above the threshold to at/below it,
+// so restocks followed by new sales alert again but repeated sales at low stock do not.
+async function notifyLowStock({ businessId, orderId, changes }) {
+  try {
+    if (!Array.isArray(changes) || !changes.length) return;
+    const business = await getBusiness(businessId);
+    if (!business) return;
+    const threshold = lowStockThreshold(business);
+    const crossed = changes.filter((change) => change.before > threshold && change.after <= threshold);
+    if (!crossed.length) return;
+
+    const owner = await getBusinessOwner(businessId);
+    if (!owner) return;
+
+    await Promise.all(crossed.map((change) => notificationService.createOnce({
+      userId: owner._id,
+      businessId,
+      type: 'LOW_STOCK',
+      title: change.after === 0 ? 'Out of stock' : 'Low stock',
+      message: change.after === 0
+        ? `${change.name} is out of stock.`
+        : `${change.name} has ${change.after} left.`,
+      relatedEntityType: 'product',
+      relatedEntityId: change.productId,
+      dedupeKey: `LOW_STOCK:${change.productId}:${orderId}`,
+    })));
+
+    if (!prefs(business).emailLowStock) return;
+    const billingService = require('./billingService');
+    if (!(await billingService.hasAdvancedAccess(businessId))) return;
+
+    await sendOnce(
+      { businessId, dedupeKey: `LOW_STOCK:${orderId}`, kind: 'low_stock' },
+      () => emailService.sendSellerLowStock({
+        to: owner.email,
+        businessName: business.name,
+        threshold,
+        products: crossed.map((change) => ({ name: change.name, stock: change.after })),
+        productsUrl: `${appBase()}/products`,
+      })
+    );
+  } catch (err) {
+    console.error('[notify:low_stock]', err.message || err);
+  }
+}
+
+async function notifyCustomerOrderConfirmation({ businessId, order, confirmationToken }) {
+  try {
+    const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
+    const email = publicOrder.customer?.email;
+    if (!email) return;
+    const business = await getBusiness(businessId);
+    if (!business || !prefs(business).emailOrderConfirmation) return;
+
+    const tokenQuery = confirmationToken ? `?c=${encodeURIComponent(confirmationToken)}` : '';
+    const confirmationUrl = confirmationToken
+      ? `${appBase()}/store/${business.slug}/order/${encodeURIComponent(publicOrder.orderNumber)}${tokenQuery}`
+      : '';
+    const billingService = require('./billingService');
+    const invoiceUrl = confirmationToken && (await billingService.hasAdvancedAccess(businessId))
+      ? `${appBase()}/api/store/${business.slug}/orders/confirm/${encodeURIComponent(confirmationToken)}/invoice`
+      : '';
+
+    await sendOnce(
+      { businessId, dedupeKey: `ORDER_CONFIRMATION:${publicOrder.id}`, kind: 'order_confirmation' },
+      () => emailService.sendCustomerOrderConfirmation({
+        to: email,
+        businessName: business.name,
+        order: publicOrder,
+        currency: business.currency || 'INR',
+        confirmationUrl,
+        invoiceUrl,
+      })
+    );
+  } catch (err) {
+    console.error('[notify:order_confirmation]', err.message || err);
+  }
+}
+
 module.exports = {
   notifyNewOrder,
   notifyPaymentSubmitted,
   notifyPaymentVerified,
   notifyOrderStatusChanged,
   notifyCustomerWant,
+  notifyLowStock,
+  notifyCustomerOrderConfirmation,
+  sendOnce,
+  prefs,
 };

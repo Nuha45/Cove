@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useMatch, useParams } from 'react-router-dom';
 import { getStorefront } from '../../services/storeService';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
 import { initials } from '../../utils/display';
 import { applySeo } from '../../utils/seo';
+import { trackVisit } from '../../utils/tracking';
 import StoreLayout from './StoreLayout';
+import CoveLogo from '../../components/brand/CoveLogo';
 
 const STATE_TITLES = {
   missing: 'Shop not found · Cove',
@@ -14,6 +16,8 @@ const STATE_TITLES = {
 
 export default function StoreShell() {
   const { slug } = useParams();
+  // Customers must still reach their order confirmation after a shop pauses or goes offline.
+  const onOrderPage = Boolean(useMatch('/store/:slug/order/:orderNumber'));
   const [business, setBusiness] = useState(null);
   const [state, setState] = useState('loading');
   const [error, setError] = useState('');
@@ -36,7 +40,9 @@ export default function StoreShell() {
           categories: result.categories || [],
         };
         setBusiness(result.business);
-        setState(result.business?.storefrontActive === false ? 'inactive' : 'ready');
+        if (result.business?.paused) setState('paused');
+        else setState(result.business?.storefrontActive === false ? 'inactive' : 'ready');
+        if (result.business?.storefrontActive !== false && !result.business?.paused) trackVisit(slug);
       } catch (err) {
         if (cancelled) return;
         setBusiness(null);
@@ -51,16 +57,25 @@ export default function StoreShell() {
     };
   }, [slug]);
 
+  const closed = state === 'inactive' || state === 'paused';
+
   useEffect(() => {
-    if (state === 'missing' || state === 'error' || state === 'inactive') {
+    if (onOrderPage && closed) return;
+    if (state === 'missing' || state === 'error' || closed) {
+      let title = STATE_TITLES[state];
+      if (state === 'inactive') title = `${business?.name || 'This shop'} is unavailable · Cove`;
+      if (state === 'paused') title = `${business?.name || 'This store'} is paused · Cove`;
       applySeo({
-        title: state === 'inactive'
-          ? `${business?.name || 'This shop'} is unavailable · Cove`
-          : STATE_TITLES[state],
+        title,
+        description: state === 'paused' ? 'This Cove store is paused and is not taking orders right now.' : undefined,
         robots: 'noindex, nofollow',
       });
     }
-  }, [state, business?.name]);
+  }, [state, business?.name, onOrderPage, closed]);
+
+  if (onOrderPage && closed) {
+    return <StoreLayout business={business} initialCatalog={initialCatalog} />;
+  }
 
   if (state === 'loading') {
     return <div className="store-status" role="status">Opening the shop...</div>;
@@ -85,6 +100,29 @@ export default function StoreShell() {
         )}
         <h1>{business?.name || 'This shop'}</h1>
         <p>This shop is temporarily unavailable and is not accepting orders right now.</p>
+      </main>
+    );
+  }
+
+  if (state === 'paused') {
+    return (
+      <main className="store-status store-paused">
+        <section className="store-paused-card" aria-labelledby="store-paused-title">
+          {business?.logo ? (
+            <img className="store-inactive-logo" src={mediaUrl(business.logo)} alt="" />
+          ) : (
+            <span className="store-mark" aria-hidden="true">{initials(business?.name || 'S', 1)}</span>
+          )}
+          <p className="store-paused-name">{business?.name || 'This store'}</p>
+          <h1 id="store-paused-title">This store is paused</h1>
+          <p>It isn&apos;t taking orders on Cove right now. Please check back soon.</p>
+          <p className="store-paused-owner">
+            Own this store? <a href="/login">Log in</a> to reopen it.
+          </p>
+        </section>
+        <p className="store-paused-brand">
+          <span>Powered by</span> <CoveLogo size={20} />
+        </p>
       </main>
     );
   }

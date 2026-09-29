@@ -10,13 +10,28 @@ const authLimiter = rateLimit({
   },
 });
 
+// Seller writes run after protect. Keying per shop keeps one busy shop from using up another's
+// allowance when several sellers share an IP (office network, or a proxy in front of the API).
 const writeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => `business:${req.businessId}`,
   message: {
     message: 'Too many changes. Please wait a few minutes and try again.',
+  },
+});
+
+// CSV exports scan a whole date range. Runs after protect, so it is keyed per shop.
+const exportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `business:${req.businessId}`,
+  message: {
+    message: 'Too many exports. Please wait a few minutes and try again.',
   },
 });
 
@@ -70,13 +85,23 @@ const publicConfirmationLimiter = rateLimit({
   },
 });
 
-const aiLimiter = rateLimit({
+const publicEventLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 20,
+  limit: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    message: 'Too many AI requests. Please wait a few minutes and try again.',
+    message: 'Too many requests from this device. Please wait a few minutes and try again.',
+  },
+});
+
+const cronLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Too many job requests. Please wait a few minutes and try again.',
   },
 });
 
@@ -102,11 +127,13 @@ const resetPasswordLimiter = rateLimit({
 
 module.exports = authLimiter;
 module.exports.writeLimiter = writeLimiter;
+module.exports.exportLimiter = exportLimiter;
 module.exports.publicOrderLimiter = publicOrderLimiter;
 module.exports.publicWantLimiter = publicWantLimiter;
 module.exports.publicWantBoardLimiter = publicWantBoardLimiter;
 module.exports.publicWantVoteLimiter = publicWantVoteLimiter;
 module.exports.publicConfirmationLimiter = publicConfirmationLimiter;
-module.exports.aiLimiter = aiLimiter;
+module.exports.publicEventLimiter = publicEventLimiter;
+module.exports.cronLimiter = cronLimiter;
 module.exports.forgotPasswordLimiter = forgotPasswordLimiter;
 module.exports.resetPasswordLimiter = resetPasswordLimiter;

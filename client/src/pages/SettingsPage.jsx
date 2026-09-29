@@ -67,6 +67,11 @@ const emptyForm = {
   emailNewOrders: true,
   emailPayments: true,
   emailCustomerWants: true,
+  emailLowStock: true,
+  emailWeeklyReport: true,
+  emailOrderConfirmation: true,
+  emailOrderUpdates: true,
+  lowStockThreshold: '5',
 };
 
 function toForm(business) {
@@ -95,12 +100,18 @@ function toForm(business) {
     emailNewOrders: business?.emailNewOrders !== false,
     emailPayments: business?.emailPayments !== false,
     emailCustomerWants: business?.emailCustomerWants !== false,
+    emailLowStock: business?.emailLowStock !== false,
+    emailWeeklyReport: business?.emailWeeklyReport !== false,
+    emailOrderConfirmation: business?.emailOrderConfirmation !== false,
+    emailOrderUpdates: business?.emailOrderUpdates !== false,
+    lowStockThreshold: String(business?.lowStockThreshold ?? 5),
   };
 }
 
 export default function SettingsPage() {
   const { refresh } = useAuth();
-  const { notify } = useOutletContext();
+  const { notify, plan } = useOutletContext();
+  const advanced = Boolean(plan?.advanced);
   const [searchParams] = useSearchParams();
   const fileInput = useRef(null);
   const qrInput = useRef(null);
@@ -266,6 +277,12 @@ export default function SettingsPage() {
     if (form.paymentInstructionsEnabled && !form.paymentInstructions.trim()) {
       next.paymentInstructions = 'Add payment instructions or turn this option off.';
     }
+    if (advanced) {
+      const threshold = Number(form.lowStockThreshold);
+      if (!Number.isInteger(threshold) || threshold < 0 || threshold > 1000) {
+        next.lowStockThreshold = 'Enter a whole number from 0 to 1000.';
+      }
+    }
     return next;
   }
 
@@ -303,6 +320,11 @@ export default function SettingsPage() {
         emailNewOrders: form.emailNewOrders,
         emailPayments: form.emailPayments,
         emailCustomerWants: form.emailCustomerWants,
+        emailLowStock: form.emailLowStock,
+        emailWeeklyReport: form.emailWeeklyReport,
+        emailOrderConfirmation: form.emailOrderConfirmation,
+        emailOrderUpdates: form.emailOrderUpdates,
+        ...(advanced ? { lowStockThreshold: Number(form.lowStockThreshold) } : {}),
       });
       setForm(toForm(result.business));
       await refresh();
@@ -469,11 +491,11 @@ export default function SettingsPage() {
                 {errors.currency ? <span className="field-error">{errors.currency}</span> : null}
               </label>
               <p className="muted wide">
-                Prices on your storefront use this currency for display. Order totals are still calculated from product prices and delivery fee.
+                Prices and order totals are shown in this currency. Changing it does not convert your existing prices.
               </p>
               <div className="wide storefront-customize-entry">
                 <strong>Customize storefront</strong>
-                <p className="muted">Choose a theme, accent color, and optional cover image for your public shop.</p>
+                <p className="muted">Choose a theme and accent color, and add an announcement for your public shop.</p>
                 <Link className="secondary" to="/storefront#customize">
                   Open customize storefront
                 </Link>
@@ -708,6 +730,63 @@ export default function SettingsPage() {
                 </span>
                 <input name="emailCustomerWants" type="checkbox" checked={form.emailCustomerWants} onChange={update} />
               </label>
+
+              <h3 className="wide settings-subhead">Customer emails</h3>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Order confirmation to customers</strong>
+                  <small className="muted">Sent when a customer who gave an email places an order. Includes the order summary and a link to track it.</small>
+                </span>
+                <input name="emailOrderConfirmation" type="checkbox" checked={form.emailOrderConfirmation} onChange={update} />
+              </label>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Order updates to customers</strong>
+                  <small className="muted">Sent when you change an order’s status, including cancellations.</small>
+                </span>
+                <input name="emailOrderUpdates" type="checkbox" checked={form.emailOrderUpdates} onChange={update} />
+              </label>
+
+              <h3 className="wide settings-subhead">
+                Cove Plus emails {!advanced ? <span className="badge orange">Plus</span> : null}
+              </h3>
+              {!advanced ? (
+                <p className="muted wide">
+                  Low-stock alerts and weekly reports are sent to Cove Plus shops. You can set your preference now.{' '}
+                  <Link className="text-button inline" to="/billing">View Cove Plus</Link>
+                </p>
+              ) : null}
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Low-stock alerts</strong>
+                  <small className="muted">When an order brings a product down to your low-stock level or sells it out.</small>
+                </span>
+                <input name="emailLowStock" type="checkbox" checked={form.emailLowStock} onChange={update} />
+              </label>
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Weekly performance report</strong>
+                  <small className="muted">A Monday summary of last week’s visitors, orders, revenue and top products.</small>
+                </span>
+                <input name="emailWeeklyReport" type="checkbox" checked={form.emailWeeklyReport} onChange={update} />
+              </label>
+              {advanced ? (
+                <label>
+                  Low-stock level
+                  <input
+                    name="lowStockThreshold"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value={form.lowStockThreshold}
+                    onChange={update}
+                  />
+                  <small className="muted">Alert when stock falls to this number or below. Use 0 to be alerted only when a product sells out.</small>
+                  {errors.lowStockThreshold ? <span className="field-error">{errors.lowStockThreshold}</span> : null}
+                </label>
+              ) : null}
             </div>
           ) : null}
         </section>

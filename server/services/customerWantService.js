@@ -17,11 +17,13 @@ function asBoolean(value, fallback) {
   return fallback;
 }
 
+// Public entry points only: a shop paused for billing takes no requests or votes.
 async function getBusinessBySlug(slug) {
-  const business = await Business.findOne({ slug: String(slug || '').toLowerCase().trim() });
+  const business = await Business.findOne({ slug: String(slug || '').toLowerCase().trim(), archivedAt: null });
   if (!business) {
     throw new ApiError(404, 'We could not find that shop.');
   }
+  await require('./billingService').assertStoreOpen(business._id);
   return business;
 }
 

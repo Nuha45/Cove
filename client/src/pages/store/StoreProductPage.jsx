@@ -7,6 +7,7 @@ import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 import { mediaUrl } from '../../utils/media';
 import { absoluteAsset, absoluteUrl, productJsonLd, truncate, useSeo } from '../../utils/seo';
+import { trackAddToCart, trackProductView } from '../../utils/tracking';
 
 function productSeo(state, product, business, slug) {
   const shopName = business?.name || 'Shop';
@@ -49,6 +50,7 @@ export default function StoreProductPage() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [activeImage, setActiveImage] = useState(0);
+  const [attempt, setAttempt] = useState(0);
 
   useSeo(productSeo(state, product, business, slug));
 
@@ -65,6 +67,7 @@ export default function StoreProductPage() {
         setQuantity(1);
         setActiveImage(0);
         setState('ready');
+        trackProductView(slug, result.product?.id);
       } catch (err) {
         if (cancelled) return;
         setError(getErrorMessage(err));
@@ -76,7 +79,7 @@ export default function StoreProductPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug, productId]);
+  }, [slug, productId, attempt]);
 
   function handleAdd() {
     if (!product?.available) return;
@@ -85,6 +88,7 @@ export default function StoreProductPage() {
       setNote('That quantity is not available.');
       return;
     }
+    trackAddToCart(slug, product.id, quantity);
     setNote('Added to cart.');
   }
 
@@ -98,7 +102,14 @@ export default function StoreProductPage() {
       </div>
     );
   }
-  if (state === 'error') return <div className="store-panel form-error" role="alert">{error}</div>;
+  if (state === 'error') {
+    return (
+      <div className="store-panel">
+        <p className="form-error" role="alert">{error}</p>
+        <button className="secondary" type="button" onClick={() => setAttempt((count) => count + 1)}>Try again</button>
+      </div>
+    );
+  }
 
   const images = product.images?.length ? product.images : [];
   const max = Math.max(1, product.stockQuantity || 0);
@@ -195,6 +206,7 @@ export default function StoreProductPage() {
                       setNote('That quantity is not available.');
                       return;
                     }
+                    trackAddToCart(slug, product.id, quantity);
                     navigate(`/store/${slug}/cart`);
                   }}
                 >

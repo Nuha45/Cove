@@ -122,7 +122,8 @@ describe('billing', { timeout: 180000 }, () => {
     razorpayService.resetClientForTests();
     if (createdBusinessIds.length) {
       await Subscription.deleteMany({ businessId: { $in: createdBusinessIds } });
-      await WebhookEvent.deleteMany({});
+      // The database is shared with real environments: only remove events this run created.
+      await WebhookEvent.deleteMany({ eventId: { $regex: stamp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } });
       await User.deleteMany({ businessId: { $in: createdBusinessIds } });
       await Business.deleteMany({ _id: { $in: createdBusinessIds } });
     }
@@ -349,8 +350,7 @@ describe('billing', { timeout: 180000 }, () => {
     assert.equal((await Subscription.findOne({ businessId: owner.businessId })).status, 'cancelled');
   });
 
-  it('cancels through the seller API and keeps history', async () => {
-    // Ensure other has a provider subscription to cancel.
+  it('cancels an uncharged trial checkout through the seller API and keeps the trial', async () => {
     const started = await api('POST', '/api/billing/subscription', { token: other.token, body: {} });
     assert.equal(started.status, 201, JSON.stringify(started.data));
 
@@ -359,7 +359,8 @@ describe('billing', { timeout: 180000 }, () => {
       body: { providerSubscriptionId: 'sub_forged_from_client' },
     });
     assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
-    assert.equal(cancelled.data.subscription.status, 'cancelled');
+    assert.equal(cancelled.data.subscription.status, 'trialing');
+    assert.equal(cancelled.data.subscription.hasProviderSubscription, false);
     assert.ok(cancelled.data.subscription.cancelledAt);
 
     const again = await api('POST', '/api/billing/subscription/cancel', { token: other.token, body: {} });
@@ -367,8 +368,8 @@ describe('billing', { timeout: 180000 }, () => {
 
     const stillThere = await Subscription.findOne({ businessId: other.businessId });
     assert.ok(stillThere);
-    assert.equal(stillThere.status, 'cancelled');
-    assert.ok(stillThere.providerSubscriptionId);
+    assert.equal(stillThere.status, 'trialing');
+    assert.ok(stillThere.trialEndAt > new Date());
   });
 
   it('keeps trial dates server-controlled and prevents a second trial row', async () => {

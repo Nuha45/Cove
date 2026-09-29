@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get('/sitemap.xml', asyncHandler(async (req, res) => {
   if (!env.publicSiteUrl) {
-    throw new ApiError(404, 'The sitemap is not configured yet.');
+    throw new ApiError(404, 'Not found.');
   }
   const entries = await seoService.sitemapEntries();
   res

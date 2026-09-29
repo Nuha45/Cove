@@ -15,9 +15,21 @@ export function formatEyebrowDate(date = new Date()) {
     .toUpperCase();
 }
 
-export function formatPrice(amount, currency = 'INR') {
+// The signed-in shop's currency, used when a dashboard page does not pass one explicitly.
+// Storefront pages always pass the shop's currency themselves.
+let defaultCurrency = 'INR';
+
+export function setDefaultCurrency(currency) {
+  defaultCurrency = currency || 'INR';
+}
+
+export function getDefaultCurrency() {
+  return defaultCurrency;
+}
+
+export function formatPrice(amount, currency = defaultCurrency) {
   const value = Number(amount);
-  const code = currency || 'INR';
+  const code = currency || defaultCurrency;
   if (!Number.isFinite(value)) {
     try {
       return new Intl.NumberFormat('en', { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(0);

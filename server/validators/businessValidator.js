@@ -5,10 +5,9 @@ const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 const { isAcceptedImageValue } = require('../utils/imageUpload');
 const {
   STOREFRONT_THEMES,
-  STOREFRONT_ACCENTS,
+  isValidAccent,
+  isValidBackground,
 } = require('../utils/storefrontAppearance');
-
-const ACCENT_VALUES = STOREFRONT_ACCENTS.map((item) => item.value.toLowerCase());
 
 function optionalBoolean(field, message) {
   return body(field)
@@ -32,6 +31,22 @@ const PAYMENT_FIELDS = [
   'emailNewOrders',
   'emailPayments',
   'emailCustomerWants',
+];
+
+const NOTIFICATION_FIELDS = [
+  'emailLowStock',
+  'emailWeeklyReport',
+  'emailOrderConfirmation',
+  'emailOrderUpdates',
+  'lowStockThreshold',
+];
+
+const PROMOTION_FIELDS = [
+  'storefrontAnnouncement',
+  'storefrontPromoTitle',
+  'storefrontPromoText',
+  'storefrontFeaturedProductIds',
+  'storefrontFeaturedCategories',
 ];
 
 const updateSettingsRules = [
@@ -101,8 +116,16 @@ const updateSettingsRules = [
     .optional()
     .trim()
     .custom((value) => {
-      if (!/^#[0-9A-Fa-f]{6}$/.test(value) || !ACCENT_VALUES.includes(value.toLowerCase())) {
+      if (typeof value !== 'string' || !isValidAccent(value)) {
         throw new Error('Please choose one of the available accent colors.');
+      }
+      return true;
+    }),
+  body('storefrontBackground')
+    .optional()
+    .custom((value) => {
+      if (typeof value !== 'string' || !isValidBackground(value.trim())) {
+        throw new Error('Please choose one of the available background colors.');
       }
       return true;
     }),
@@ -128,7 +151,53 @@ const updateSettingsRules = [
   optionalBoolean('payOnPickupEnabled', 'Pay on pickup setting is not valid.'),
   optionalBoolean('emailNewOrders', 'New order email setting is not valid.'),
   optionalBoolean('emailPayments', 'Payment email setting is not valid.'),
-  optionalBoolean('emailCustomerWants', 'Customer Want email setting is not valid.'),
+  optionalBoolean('emailCustomerWants', 'Customer request email setting is not valid.'),
+  optionalBoolean('emailLowStock', 'Low stock email setting is not valid.'),
+  optionalBoolean('emailWeeklyReport', 'Weekly report email setting is not valid.'),
+  optionalBoolean('emailOrderConfirmation', 'Order confirmation email setting is not valid.'),
+  optionalBoolean('emailOrderUpdates', 'Order update email setting is not valid.'),
+  body('lowStockThreshold')
+    .optional()
+    .isInt({ min: 0, max: 1000 })
+    .withMessage('Low stock level must be a whole number between 0 and 1000.')
+    .toInt(),
+  body('storefrontAnnouncement')
+    .optional()
+    .isString()
+    .withMessage('Announcement is not valid.')
+    .trim()
+    .isLength({ max: 140 })
+    .withMessage('Announcement must be 140 characters or fewer.'),
+  body('storefrontPromoTitle')
+    .optional()
+    .isString()
+    .withMessage('Promotion title is not valid.')
+    .trim()
+    .isLength({ max: 60 })
+    .withMessage('Promotion title must be 60 characters or fewer.'),
+  body('storefrontPromoText')
+    .optional()
+    .isString()
+    .withMessage('Promotion message is not valid.')
+    .trim()
+    .isLength({ max: 200 })
+    .withMessage('Promotion message must be 200 characters or fewer.'),
+  body('storefrontFeaturedProductIds')
+    .optional()
+    .isArray({ max: 8 })
+    .withMessage('You can feature up to 8 products.'),
+  body('storefrontFeaturedProductIds.*')
+    .isMongoId()
+    .withMessage('One of the featured products is not valid.'),
+  body('storefrontFeaturedCategories')
+    .optional()
+    .isArray({ max: 6 })
+    .withMessage('You can feature up to 6 categories.'),
+  body('storefrontFeaturedCategories.*')
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 40 })
+    .withMessage('One of the featured categories is not valid.'),
   body('deliveryFee')
     .optional()
     .custom((value) => {
@@ -191,9 +260,11 @@ const updateSettingsRules = [
     const allowed = [
       'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
       'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
-      'storefrontTheme', 'storefrontAccent', 'storefrontCoverImage',
+      'storefrontTheme', 'storefrontAccent', 'storefrontBackground', 'storefrontCoverImage',
       'storefrontCoverFocusX', 'storefrontCoverFocusY',
       ...PAYMENT_FIELDS,
+      ...NOTIFICATION_FIELDS,
+      ...PROMOTION_FIELDS,
     ];
     if (!allowed.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {
       throw new Error('Please change at least one setting.');
@@ -202,4 +273,4 @@ const updateSettingsRules = [
   }),
 ];
 
-module.exports = { updateSettingsRules };
+module.exports = { updateSettingsRules, NOTIFICATION_FIELDS, PROMOTION_FIELDS };

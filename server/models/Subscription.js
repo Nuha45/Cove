@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { STATUSES, PROVIDER } = require('../utils/subscriptionStatus');
+const { PLAN_KEYS } = require('../utils/covePlan');
 
 const subscriptionSchema = new mongoose.Schema(
   {
@@ -27,6 +28,12 @@ const subscriptionSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+    },
+    // Records created before Cove Plus existed have no value and read as 'pro'.
+    plan: {
+      type: String,
+      enum: PLAN_KEYS,
+      default: 'pro',
     },
     status: {
       type: String,
@@ -67,6 +74,22 @@ const subscriptionSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // Plan Razorpay will switch to at the end of the current cycle (Advanced → Pro).
+    scheduledPlan: {
+      type: String,
+      enum: [...PLAN_KEYS, ''],
+      default: '',
+    },
+    // First failed renewal of the current past-due spell. Bounds the grace period.
+    pastDueSince: {
+      type: Date,
+      default: null,
+    },
+    // created_at of the newest Razorpay event applied. Older, late-delivered events are ignored.
+    lastProviderEventAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -83,6 +106,7 @@ subscriptionSchema.methods.toPublic = function toPublic() {
   return {
     id: this._id.toString(),
     status: this.status,
+    plan: this.plan || 'pro',
     trialUsed: Boolean(this.trialUsed),
     trialStartAt: this.trialStartAt,
     trialEndAt: this.trialEndAt,
@@ -90,6 +114,8 @@ subscriptionSchema.methods.toPublic = function toPublic() {
     currentPeriodEndAt: this.currentPeriodEndAt,
     cancelledAt: this.cancelledAt,
     cancelAtPeriodEnd: Boolean(this.cancelAtPeriodEnd),
+    scheduledPlan: this.scheduledPlan || '',
+    pastDueSince: this.pastDueSince,
     hasProviderSubscription: Boolean(this.providerSubscriptionId),
     provider: this.provider,
   };

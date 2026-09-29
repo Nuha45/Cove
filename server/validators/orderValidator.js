@@ -59,8 +59,8 @@ const createRules = [
     if (text.length < 5) {
       throw new Error('Please enter a delivery address.');
     }
-    if (text.length > 200) {
-      throw new Error('Delivery address must be 200 characters or fewer.');
+    if (text.length > 400) {
+      throw new Error('Delivery address must be 400 characters or fewer.');
     }
     return true;
   }),

@@ -1,19 +1,89 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download, Eye, Lock } from 'lucide-react';
 import { Link, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
 import { getOrder, updateOrder } from '../services/orderService';
+import { downloadOrderInvoice, getOrderInvoice, viewOrderInvoice } from '../services/invoiceService';
 import { formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
 import { NEXT_PAYMENT_STATUSES, NEXT_STATUSES, PAYMENT_TONE, STATUS_TONE } from '../utils/orders';
 import { paymentMethodLabel } from '../utils/payments';
 
+const ACTOR_LABELS = { seller: 'You', customer: 'Customer', system: 'Cove' };
+
+function InvoicePanel({ orderId, plan, notify }) {
+  const advanced = Boolean(plan?.advanced);
+  const [invoice, setInvoice] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    if (!advanced) return undefined;
+    let cancelled = false;
+    setError('');
+    getOrderInvoice(orderId)
+      .then((result) => {
+        if (!cancelled) setInvoice(result.invoice);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, advanced]);
+
+  async function run(action) {
+    setBusy(action);
+    try {
+      if (action === 'view') await viewOrderInvoice(orderId);
+      else await downloadOrderInvoice(orderId, invoice?.invoiceNumber);
+    } catch (err) {
+      notify(getErrorMessage(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  if (plan?.loading) return null;
+
+  if (!advanced) {
+    return (
+      <div className="invoice-panel">
+        <h3>Invoice</h3>
+        <p className="muted">
+          <Lock size={12} aria-hidden="true" /> PDF invoices are part of Cove Plus.
+        </p>
+        <Link className="secondary" to="/billing">View Cove Plus</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="invoice-panel">
+      <h3>Invoice</h3>
+      {error ? <p className="form-error">{error}</p> : null}
+      {!error ? (
+        <p className="muted">{invoice ? `${invoice.invoiceNumber} · issued ${formatOrderDate(invoice.issuedAt)}` : 'Preparing invoice...'}</p>
+      ) : null}
+      <div className="invoice-panel-actions">
+        <button className="secondary" type="button" disabled={!invoice || Boolean(busy)} onClick={() => run('view')}>
+          <Eye size={15} /> {busy === 'view' ? 'Opening...' : 'View invoice'}
+        </button>
+        <button className="secondary" type="button" disabled={!invoice || Boolean(busy)} onClick={() => run('download')}>
+          <Download size={15} /> {busy === 'download' ? 'Preparing...' : 'Download PDF'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { notify } = useOutletContext();
+  const { notify, plan } = useOutletContext();
   const [order, setOrder] = useState(null);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
@@ -99,7 +169,7 @@ export default function OrderDetailPage() {
         <>
           <PageIntro
             eyebrow={order.orderNumber}
-            title={order.customer.name}
+            title={order.customer?.name || order.orderNumber}
             subtitle={formatOrderDate(order.createdAt)}
           />
 
@@ -112,8 +182,8 @@ export default function OrderDetailPage() {
                     <dt>Name</dt>
                     <dd>
                       {order.customerId ? (
-                        <Link className="text-button" to={`/customers/${order.customerId}`}>{order.customer.name}</Link>
-                      ) : order.customer.name}
+                        <Link className="text-button" to={`/customers/${order.customerId}`}>{order.customer?.name || 'Customer'}</Link>
+                      ) : order.customer?.name || 'Customer'}
                     </dd>
                   </div>
                   <div>
@@ -131,7 +201,7 @@ export default function OrderDetailPage() {
                   {order.deliveryMethod === 'Delivery' ? (
                     <div className="wide">
                       <dt>Address</dt>
-                      <dd>{order.deliveryAddress}</dd>
+                      <dd className="address-block">{order.deliveryAddress}</dd>
                     </div>
                   ) : null}
                   <div className="wide">
@@ -196,7 +266,7 @@ export default function OrderDetailPage() {
                         <li key={`${event.at}-${index}`}>
                           <strong>{event.fromStatus} → {event.toStatus}</strong>
                           <small>
-                            {formatOrderDate(event.at)} · {event.actorType}
+                            {formatOrderDate(event.at)} · {ACTOR_LABELS[event.actorType] || 'Cove'}
                             {event.note ? ` · ${event.note}` : ''}
                           </small>
                         </li>
@@ -322,6 +392,8 @@ export default function OrderDetailPage() {
                   Reopen as pending
                 </button>
               ) : null}
+
+              <InvoicePanel orderId={order.id} plan={plan} notify={notify} />
             </aside>
           </div>
         </>

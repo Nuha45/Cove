@@ -66,7 +66,7 @@ async function nextOrderNumber(businessId, session) {
   return `COVE-${String(counter.seq).padStart(6, '0')}`;
 }
 
-async function claimItems(businessId, requested, session) {
+async function claimItems(businessId, requested, session, stockChanges = []) {
   const snapshots = [];
 
   for (const item of requested) {
@@ -91,7 +91,7 @@ async function claimItems(businessId, requested, session) {
     if (!claimed) {
       const existing = await Product.findOne({ _id: item.productId, businessId }).session(session);
       if (!existing) {
-        throw new ApiError(400, 'One of those products is not in your catalog.');
+        throw new ApiError(400, 'One of those products is no longer available.');
       }
       if (existing.status !== 'Active') {
         throw new ApiError(400, `${existing.name} is not available to order.`);
@@ -99,6 +99,12 @@ async function claimItems(businessId, requested, session) {
       throw new ApiError(409, `Not enough stock for ${existing.name}.`);
     }
 
+    stockChanges.push({
+      productId: claimed._id,
+      name: claimed.name,
+      before: claimed.stockQuantity,
+      after: claimed.stockQuantity - quantity,
+    });
     const price = roundMoney(claimed.price);
     snapshots.push({
       productId: claimed._id,
@@ -135,14 +141,17 @@ async function create(businessId, input) {
   );
 
   const session = await mongoose.startSession();
+  let stockChanges = [];
   try {
     // Atlas runs as a replica set, so stock, customer stats, and the order commit together.
     const order = await session.withTransaction(async () => {
+      // withTransaction may retry the callback, so start each attempt with a clean list.
+      stockChanges = [];
       const business = await Business.findById(businessId).session(session);
       if (!business) {
         throw new ApiError(404, 'Business not found.');
       }
-      const items = await claimItems(businessId, requested, session);
+      const items = await claimItems(businessId, requested, session, stockChanges);
       const subtotal = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
       // Always use the saved business delivery fee. Never trust a client-supplied amount.
       const deliveryFee = input.deliveryMethod === 'Delivery'
@@ -205,6 +214,13 @@ async function create(businessId, input) {
         notifyEvents.notifyNewOrder({ businessId, order }).catch(() => {});
       });
     }
+    // Invoices and stock alerts run after commit and can never undo the order.
+    require('./invoiceService').queueInvoiceForOrder(businessId, order);
+    const changes = stockChanges.slice();
+    setImmediate(() => {
+      const notifyEvents = require('./notifyEvents');
+      notifyEvents.notifyLowStock({ businessId, orderId: order._id, changes }).catch(() => {});
+    });
 
     return order;
   } catch (err) {
@@ -346,6 +362,7 @@ async function restoreStock(items, businessId, session) {
 async function cancel(businessId, id, paymentStatus, actorUserId = null) {
   await ensureReady();
   const session = await mongoose.startSession();
+  let previousStatus = null;
   try {
     const order = await session.withTransaction(async () => {
       const previous = await Order.findOneAndUpdate(
@@ -373,6 +390,7 @@ async function cancel(businessId, id, paymentStatus, actorUserId = null) {
         throw new ApiError(400, transitionMessage(existing.status));
       }
 
+      previousStatus = previous.status;
       await restoreStock(previous.items, businessId, session);
       // Cancelled orders do not count as revenue. Reverse the create-time stats once.
       await customerService.reverseOrder(
@@ -389,6 +407,14 @@ async function cancel(businessId, id, paymentStatus, actorUserId = null) {
         await current.save({ session });
       }
       return current;
+    });
+    setImmediate(() => {
+      const notifyEvents = require('./notifyEvents');
+      notifyEvents.notifyOrderStatusChanged({
+        businessId,
+        order,
+        previousStatus,
+      }).catch(() => {});
     });
     return order;
   } catch (err) {

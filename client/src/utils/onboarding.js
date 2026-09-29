@@ -103,7 +103,8 @@ export function isStorefrontCustomized(business) {
   const theme = business?.storefrontTheme || business?.appearance?.theme || 'warm';
   const accent = String(business?.storefrontAccent || business?.appearance?.accent || '#FF7A3D').toLowerCase();
   const cover = business?.storefrontCoverImage || business?.appearance?.coverImage || '';
-  return theme !== 'warm' || accent !== '#ff7a3d' || Boolean(cover);
+  const background = business?.storefrontBackground || business?.appearance?.background || '';
+  return theme !== 'warm' || accent !== '#ff7a3d' || Boolean(cover) || Boolean(background);
 }
 
 export function isPaymentSetupComplete(business) {

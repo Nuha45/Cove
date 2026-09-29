@@ -51,29 +51,23 @@ export default function StoreConfirmationPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      const fromState = location.state?.confirmation;
-      if (fromState?.order?.orderNumber === orderNumber) {
-        if (!cancelled) {
-          setData(fromState);
-          setReference(fromState.order.paymentReference || '');
-          setLoadState('ready');
-        }
-        return;
-      }
+    function show(result) {
+      setData(result);
+      setReference(result.order.paymentReference || '');
+      setLoadState('ready');
+    }
 
+    async function load() {
+      // Show what we already have straight away, then refresh from the server so a reload
+      // never keeps showing an old payment or order status.
+      const fromState = location.state?.confirmation;
       const cached = loadConfirmation(slug, orderNumber);
-      if (cached?.order?.orderNumber === orderNumber && !token) {
-        if (!cancelled) {
-          setData(cached);
-          setReference(cached.order.paymentReference || '');
-          setLoadState('ready');
-        }
-        return;
-      }
+      const local = [fromState, cached].find((item) => item?.order?.orderNumber === orderNumber);
+      if (local) show(local);
+      else setLoadState('loading');
 
       if (!token) {
-        if (!cancelled) {
+        if (!local) {
           setData(null);
           setLoadState('missing');
         }
@@ -84,28 +78,21 @@ export default function StoreConfirmationPage() {
         const result = await getStoreOrderConfirmation(slug, token);
         if (cancelled) return;
         if (result?.order?.orderNumber !== orderNumber) {
-          setData(null);
-          setLoadState('missing');
+          if (!local) {
+            setData(null);
+            setLoadState('missing');
+          }
           return;
         }
         saveConfirmation(slug, result);
-        setData(result);
-        setReference(result.order.paymentReference || '');
-        setLoadState('ready');
+        show(result);
       } catch {
-        if (cancelled) return;
-        if (cached?.order?.orderNumber === orderNumber) {
-          setData(cached);
-          setReference(cached.order.paymentReference || '');
-          setLoadState('ready');
-          return;
-        }
+        if (cancelled || local) return;
         setData(null);
         setLoadState('missing');
       }
     }
 
-    setLoadState('loading');
     load();
     return () => {
       cancelled = true;
@@ -159,18 +146,29 @@ export default function StoreConfirmationPage() {
     && Boolean(token);
   const hasConfigured = payments?.hasConfiguredMethod;
   const isPaid = order.paymentStatus === 'Paid';
-  const showPayDetails = Boolean(order.paymentMethod) && !isPaid;
+  const isCancelled = order.status === 'Cancelled';
+  const showPayDetails = Boolean(order.paymentMethod) && !isPaid && !isCancelled;
+  const shopName = business?.name || 'the shop';
 
   return (
     <div className="store-confirm">
       <div className="store-confirm-banner">
-        <CheckCircle2 size={28} />
+        {isCancelled ? <CircleAlert size={28} /> : <CheckCircle2 size={28} />}
         <div>
-          <p className="eyebrow">ORDER PLACED</p>
-          <h1>Thank you, {order.customer.name}!</h1>
+          <p className="eyebrow">{isCancelled ? 'ORDER CANCELLED' : 'ORDER PLACED'}</p>
+          <h1>{isCancelled ? 'This order was cancelled' : order.customer?.name ? `Thank you, ${order.customer.name}!` : 'Thank you for your order!'}</h1>
           <p>
-            Your order was received by <strong>{business?.name || 'the shop'}</strong>.
-            {' '}Next: pay the seller (if you have not already), then optionally share a payment reference.
+            {isCancelled ? (
+              <>
+                <strong>{shopName}</strong> cancelled this order, so there is nothing to pay.
+                {' '}If you already paid, contact the shop{business?.phone ? ` at ${business.phone}` : ''} about a refund.
+              </>
+            ) : (
+              <>
+                Your order was received by <strong>{shopName}</strong>.
+                {' '}Next: pay the shop (if you have not already), then optionally share a payment reference.
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -195,26 +193,31 @@ export default function StoreConfirmationPage() {
           </div>
         </div>
 
-        <div className="store-confirm-due">
-          <span>Amount due to {business?.name || 'the seller'}</span>
-          <strong>{formatPrice(order.total, currency)}</strong>
-          {order.paymentMethod ? (
-            <small>Method: {paymentMethodLabel(order.paymentMethod, currency)}</small>
-          ) : (
-            <small>Payment method not selected yet</small>
-          )}
-        </div>
+        {isCancelled ? null : (
+          <>
+            <div className="store-confirm-due">
+              <span>Amount due to {shopName}</span>
+              <strong>{formatPrice(order.total, currency)}</strong>
+              {order.paymentMethod ? (
+                <small>Method: {paymentMethodLabel(order.paymentMethod, currency)}</small>
+              ) : (
+                <small>Payment method not selected yet</small>
+              )}
+            </div>
 
-        <PaymentStatusCallout status={order.paymentStatus} />
+            <PaymentStatusCallout status={order.paymentStatus} />
+          </>
+        )}
       </section>
 
+      {isCancelled ? null : (
       <section className="store-card">
-        <h2>Next step: pay {business?.name || 'the seller'}</h2>
+        <h2>Next step: pay {shopName}</h2>
 
         {!hasConfigured ? (
           <div className="store-pay-pending">
             <p>
-              This shop has not published payment details yet. Message {business?.name || 'the seller'}
+              This shop has not published payment details yet. Message {shopName}
               {business?.phone ? ` at ${business.phone}` : ''} about how to pay.
               Your order remains payment pending until they confirm.
             </p>
@@ -283,6 +286,7 @@ export default function StoreConfirmationPage() {
           </p>
         ) : null}
       </section>
+      )}
 
       <section className="store-card">
         <h2>Order details</h2>
@@ -303,7 +307,7 @@ export default function StoreConfirmationPage() {
         <h3 className="store-confirm-subhead">Fulfilment</h3>
         <p><strong>{order.deliveryMethod}</strong></p>
         {order.deliveryMethod === 'Delivery'
-          ? <p>{order.deliveryAddress}</p>
+          ? <p className="address-block">{order.deliveryAddress}</p>
           : <p>The seller will share pickup details with you.</p>}
         {order.notes ? <p className="muted">Notes: {order.notes}</p> : null}
       </section>

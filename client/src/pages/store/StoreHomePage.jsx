@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
-import { Package, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import EmptyState from '../../components/ui/EmptyState';
+import {
+  StoreFeaturedCategories,
+  StoreHero,
+  StoreProductCard,
+  StorePromo,
+} from '../../components/storefront/StoreSections';
 import { getStorefront } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
@@ -44,6 +50,7 @@ export default function StoreHomePage() {
   const [state, setState] = useState(seeded ? 'ready' : 'loading');
   const [error, setError] = useState('');
   const [skipFetch, setSkipFetch] = useState(Boolean(seeded));
+  const [attempt, setAttempt] = useState(0);
 
   useSeo(storeSeo(business));
 
@@ -84,9 +91,13 @@ export default function StoreHomePage() {
     return () => {
       cancelled = true;
     };
-  }, [slug, query, category]);
+  }, [slug, query, category, attempt]);
 
   const emptyBecauseFilter = state === 'ready' && products.length === 0 && (query || category);
+  const promotions = business.promotions || null;
+  const featuredProducts = promotions?.featuredProducts || [];
+  const featuredCategories = (promotions?.featuredCategories || []).filter((item) => categories.includes(item));
+  const showFeatured = featuredProducts.length > 0 && !query && !category;
   const metaBits = [];
   if (business.phone) metaBits.push(business.phone);
   if (business.pickupEnabled) metaBits.push('Pickup available');
@@ -100,22 +111,40 @@ export default function StoreHomePage() {
 
   return (
     <>
-      <section className="store-hero">
-        <div className="store-hero-copy">
-          <p className="eyebrow">{business.category || 'SHOP'}</p>
-          <h1>{business.name}</h1>
-          <p className="store-hero-lead">
-            {business.description || 'Browse the collection and place your order here.'}
-          </p>
-          {metaBits.length ? (
-            <div className="store-hero-meta">
-              {metaBits.map((bit) => (
-                <small key={bit}>{bit}</small>
-              ))}
+      <StoreHero
+        category={business.category}
+        title={business.name}
+        lead={business.description || 'Browse the collection and place your order here.'}
+        metaBits={metaBits}
+      />
+
+      <StorePromo title={promotions?.promoTitle} text={promotions?.promoText} />
+
+      <StoreFeaturedCategories
+        categories={featuredCategories}
+        selected={category}
+        onSelect={(item) => setCategory((current) => (current === item ? '' : item))}
+      />
+
+      {showFeatured ? (
+        <section className="store-catalog store-featured">
+          <div className="store-catalog-head">
+            <div>
+              <h2>Featured</h2>
             </div>
-          ) : null}
-        </div>
-      </section>
+          </div>
+          <div className="store-grid">
+            {featuredProducts.map((product) => (
+              <StoreProductCard
+                key={product.id}
+                product={product}
+                currency={business.currency}
+                to={`/store/${slug}/product/${product.id}`}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <aside className="store-want-cta">
         <div className="store-want-cta-copy">
@@ -164,7 +193,12 @@ export default function StoreHomePage() {
         </div>
 
         {state === 'loading' ? <div className="store-panel" role="status">Loading products...</div> : null}
-        {state === 'error' ? <div className="store-panel form-error" role="alert">{error}</div> : null}
+        {state === 'error' ? (
+          <div className="store-panel">
+            <p className="form-error" role="alert">{error}</p>
+            <button className="secondary" type="button" onClick={() => setAttempt((count) => count + 1)}>Try again</button>
+          </div>
+        ) : null}
 
         {state === 'ready' && products.length === 0 ? (
           <div className="store-panel">
@@ -183,40 +217,16 @@ export default function StoreHomePage() {
         {state === 'ready' && products.length > 0 ? (
           <div className="store-grid">
             {products.map((product) => (
-              <Link
-                className="store-product-card"
+              <StoreProductCard
                 key={product.id}
+                product={product}
+                currency={business.currency}
                 to={`/store/${slug}/product/${product.id}`}
-              >
-                <ProductImage product={product} />
-                <div className="store-product-copy">
-                  {product.category ? <span className="store-product-category">{product.category}</span> : null}
-                  <strong>{product.name}</strong>
-                  <div className="store-product-meta">
-                    <span className="store-product-price">{formatPrice(product.price, business.currency)}</span>
-                    <small className={product.available ? 'in-stock' : 'out-stock'}>
-                      {product.stockAvailability}
-                    </small>
-                  </div>
-                </div>
-              </Link>
+              />
             ))}
           </div>
         ) : null}
       </section>
     </>
   );
-}
-
-function ProductImage({ product }) {
-  const src = product.images?.[0];
-  if (!src) {
-    return (
-      <span className="store-thumb-fallback" aria-hidden="true">
-        <Package size={28} />
-      </span>
-    );
-  }
-  // The card link already announces the product name.
-  return <img src={mediaUrl(src)} alt="" loading="lazy" decoding="async" />;
 }

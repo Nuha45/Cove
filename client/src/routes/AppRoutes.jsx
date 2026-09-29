@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import GuestRoute from './GuestRoute';
 import ProtectedRoute from './ProtectedRoute';
 import AdminRoute from './AdminRoute';
@@ -18,6 +18,7 @@ import StorefrontPage from '../pages/StorefrontPage';
 import BillingPage from '../pages/BillingPage';
 import AnalyticsPage from '../pages/AnalyticsPage';
 import HelpPage from '../pages/HelpPage';
+import HomePage from '../pages/HomePage';
 
 const StoreShell = lazy(() => import('../pages/store/StoreShell'));
 const StoreHomePage = lazy(() => import('../pages/store/StoreHomePage'));
@@ -31,6 +32,10 @@ const CustomersPage = lazy(() => import('../pages/CustomersPage'));
 const CustomerDetailPage = lazy(() => import('../pages/CustomerDetailPage'));
 const CustomerWantsPage = lazy(() => import('../pages/CustomerWantsPage'));
 const CustomerWantDetailPage = lazy(() => import('../pages/CustomerWantDetailPage'));
+const InvoicesPage = lazy(() => import('../pages/InvoicesPage'));
+const TermsPage = lazy(() => import('../pages/legal/TermsPage'));
+const PrivacyPage = lazy(() => import('../pages/legal/PrivacyPage'));
+const RefundPolicyPage = lazy(() => import('../pages/legal/RefundPolicyPage'));
 const AdminLayout = lazy(() => import('../layouts/AdminLayout'));
 const AdminOverviewPage = lazy(() => import('../pages/admin/AdminOverviewPage'));
 const AdminBusinessesPage = lazy(() => import('../pages/admin/AdminBusinessesPage'));
@@ -38,6 +43,17 @@ const AdminBusinessDetailPage = lazy(() => import('../pages/admin/AdminBusinessD
 
 function StoreFallback() {
   return <div className="store-status">Opening the shop...</div>;
+}
+
+function StorePageNotFound() {
+  const { slug } = useParams();
+  return (
+    <div className="store-panel">
+      <h1>Page not found</h1>
+      <p>This page is not part of the shop. It may have moved or the link may be incomplete.</p>
+      <Link className="primary" to={`/store/${slug}`}>Back to shop</Link>
+    </div>
+  );
 }
 
 function PageFallback() {
@@ -69,6 +85,7 @@ export default function AppRoutes() {
         <Route path="order/:orderNumber" element={<Suspense fallback={<StoreFallback />}><StoreConfirmationPage /></Suspense>} />
         <Route path="want" element={<Suspense fallback={<StoreFallback />}><StoreWantPage /></Suspense>} />
         <Route path="want-board" element={<Suspense fallback={<StoreFallback />}><StoreWantBoardPage /></Suspense>} />
+        <Route path="*" element={<StorePageNotFound />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
@@ -82,8 +99,7 @@ export default function AppRoutes() {
           <Route path="/customers/:id" element={<Suspense fallback={<PageFallback />}><CustomerDetailPage /></Suspense>} />
           <Route path="/customer-wants" element={<Suspense fallback={<PageFallback />}><CustomerWantsPage /></Suspense>} />
           <Route path="/customer-wants/:id" element={<Suspense fallback={<PageFallback />}><CustomerWantDetailPage /></Suspense>} />
-          {/* AI Marketing is hidden for now; MarketingPage and the /api/marketing endpoints are kept. */}
-          <Route path="/marketing" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/invoices" element={<Suspense fallback={<PageFallback />}><InvoicesPage /></Suspense>} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/storefront" element={<StorefrontPage />} />
           <Route path="/billing" element={<BillingPage />} />
@@ -100,8 +116,11 @@ export default function AppRoutes() {
         </Route>
       </Route>
 
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<HomePage />} />
+      <Route path="/terms" element={<Suspense fallback={<PageFallback />}><TermsPage /></Suspense>} />
+      <Route path="/privacy" element={<Suspense fallback={<PageFallback />}><PrivacyPage /></Suspense>} />
+      <Route path="/refund-policy" element={<Suspense fallback={<PageFallback />}><RefundPolicyPage /></Suspense>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -10,5 +10,8 @@ router.use(protect, requireAdmin);
 router.get('/overview', adminController.getOverview);
 router.get('/businesses', adminController.listBusinesses);
 router.get('/businesses/:id', adminController.getBusiness);
+router.post('/businesses/:id/archive', adminController.archiveBusiness);
+router.post('/businesses/:id/restore', adminController.restoreBusiness);
+router.delete('/businesses/:id', adminController.deleteBusiness);
 
 module.exports = router;

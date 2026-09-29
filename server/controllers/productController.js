@@ -1,5 +1,8 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const productService = require('../services/productService');
+const businessService = require('../services/businessService');
+const { sendCsv } = require('../utils/csv');
 
 function productInput(body, fields) {
   const input = {};
@@ -73,10 +76,52 @@ const remove = asyncHandler(async (req, res) => {
   });
 });
 
+const bulkUpdate = asyncHandler(async (req, res) => {
+  const result = await productService.bulkUpdate(req.businessId, {
+    ids: req.body.ids,
+    action: req.body.action,
+    value: req.body.value,
+  });
+  res.json({
+    message: result.matched === 1 ? '1 product updated.' : `${result.matched} products updated.`,
+    ...result,
+  });
+});
+
+const exportCsv = asyncHandler(async (req, res) => {
+  const ids = typeof req.query.ids === 'string' && req.query.ids
+    ? req.query.ids.split(',').filter((id) => mongoose.isValidObjectId(id)).slice(0, 500)
+    : [];
+  const products = await productService.listForExport(req.businessId, { ids });
+  const date = new Date().toISOString().slice(0, 10);
+  sendCsv(
+    res,
+    `cove-products-${date}.csv`,
+    ['Name', 'Category', 'Price', 'Stock', 'Status', 'Created'],
+    products.map((product) => [
+      product.name,
+      product.category || '',
+      product.price,
+      product.stockQuantity,
+      product.status,
+      product.createdAt ? new Date(product.createdAt).toISOString().slice(0, 10) : '',
+    ])
+  );
+});
+
+const inventory = asyncHandler(async (req, res) => {
+  const business = await businessService.getOwnBusiness(req.businessId);
+  const threshold = Number.isFinite(business.lowStockThreshold) ? business.lowStockThreshold : 5;
+  res.json(await productService.inventory(req.businessId, threshold));
+});
+
 module.exports = {
   list,
   getOne,
   create,
   update,
   remove,
+  bulkUpdate,
+  exportCsv,
+  inventory,
 };

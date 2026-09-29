@@ -6,9 +6,9 @@ export const PRIVATE_PATHS = [
   '/dashboard',
   '/products',
   '/orders',
+  '/invoices',
   '/customers',
   '/customer-wants',
-  '/marketing',
   '/analytics',
   '/storefront',
   '/billing',
@@ -35,7 +35,13 @@ export function validSitemapUrl(value) {
 }
 
 export function buildRobotsTxt({ sitemapUrl = '' } = {}) {
-  const lines = ['User-agent: *', ...PRIVATE_PATHS.map((path) => `Disallow: ${path}`), 'Allow: /store/'];
+  // The sitemap is served under /api/ on the same site; crawlers skip sitemaps robots.txt blocks.
+  const lines = [
+    'User-agent: *',
+    ...PRIVATE_PATHS.map((path) => `Disallow: ${path}`),
+    'Allow: /api/seo/sitemap.xml',
+    'Allow: /store/',
+  ];
   const sitemap = validSitemapUrl(sitemapUrl);
   if (sitemap) lines.push('', `Sitemap: ${sitemap}`);
   return `${lines.join('\n')}\n`;

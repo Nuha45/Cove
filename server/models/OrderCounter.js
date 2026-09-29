@@ -14,6 +14,12 @@ const orderCounterSchema = new mongoose.Schema({
     default: 0,
     min: 0,
   },
+  // Separate per-business invoice sequence. Missing on older rows; $inc treats that as 0.
+  invoiceSeq: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
 });
 
 module.exports = mongoose.model('OrderCounter', orderCounterSchema);

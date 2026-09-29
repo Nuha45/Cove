@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import * as authService from '../services/authService';
 import { getErrorMessage } from '../utils/errors';
+import { setDefaultCurrency } from '../utils/display';
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,8 @@ export function AuthProvider({ children }) {
   const [business, setBusiness] = useState(null);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
+  // Set during render so children format money in the shop's currency on their first paint.
+  setDefaultCurrency(business?.currency);
 
   async function loadSession() {
     setStatus('loading');

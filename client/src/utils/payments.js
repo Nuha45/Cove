@@ -1,8 +1,9 @@
 import { ExternalLink, FileText, Package, QrCode } from 'lucide-react';
+import { getDefaultCurrency } from './display';
 
 export const PAYMENT_METHODS = ['qr', 'payment_link', 'instructions', 'pay_on_pickup'];
 
-export function paymentMethodLabel(method, currency = 'INR') {
+export function paymentMethodLabel(method, currency = getDefaultCurrency()) {
   const india = currency === 'INR';
   switch (method) {
     case 'qr':

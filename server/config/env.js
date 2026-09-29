@@ -45,7 +45,11 @@ if (jwtSecret.length < 32 || jwtSecret.includes('replace-with')) {
   throw new Error('JWT_SECRET must be a real secret of at least 32 characters.');
 }
 
-const trialDays = Number(process.env.COVE_TRIAL_DAYS || 30);
+const { TRIAL_DAYS } = require('../utils/covePlan');
+
+if (process.env.COVE_TRIAL_DAYS && Number(process.env.COVE_TRIAL_DAYS) !== TRIAL_DAYS) {
+  console.warn(`[billing] COVE_TRIAL_DAYS is no longer used. New shops always get a ${TRIAL_DAYS}-day trial.`);
+}
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
 
@@ -105,6 +109,8 @@ module.exports = {
   clientOrigin: clientOrigins[0],
   clientOrigins,
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  // Temporary diagnostic: logs how the first 20 requests' client IPs resolve behind the proxies.
+  logProxyIps: process.env.LOG_PROXY_IPS === 'true',
   cookieSameSite: parseSameSite(process.env.COOKIE_SAME_SITE),
   // Public frontend origin used for sitemap URLs. Sitemap is disabled until this is set.
   publicSiteUrl: parseSiteUrl(process.env.PUBLIC_SITE_URL),
@@ -113,29 +119,29 @@ module.exports = {
     keyId: process.env.RAZORPAY_KEY_ID || '',
     keySecret: process.env.RAZORPAY_KEY_SECRET || '',
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
-    planId: process.env.RAZORPAY_PLAN_ID || '',
+    // ₹599 Cove Basic plan (internal key "pro"). RAZORPAY_PLAN_ID is the original name and still works.
+    planId: process.env.RAZORPAY_PRO_PLAN_ID || process.env.RAZORPAY_PLAN_ID || '',
+    // Separate ₹899 Razorpay plan for Cove Plus (internal key "advanced"). Plus checkout is disabled until set.
+    advancedPlanId: process.env.RAZORPAY_ADVANCED_PLAN_ID || '',
   },
-  trialDays: Number.isFinite(trialDays) && trialDays > 0 ? trialDays : 30,
+  // Shared secret for scheduled-job endpoints (weekly reports). Jobs are disabled until set.
+  cronSecret: process.env.CRON_SECRET || '',
+  // Time zone used to bucket analytics by day and hour.
+  analyticsTimeZone: (() => {
+    const zone = process.env.COVE_ANALYTICS_TIMEZONE || 'Asia/Kolkata';
+    try {
+      Intl.DateTimeFormat('en-US', { timeZone: zone });
+      return zone;
+    } catch {
+      throw new Error('COVE_ANALYTICS_TIMEZONE must be a valid IANA time zone like Asia/Kolkata.');
+    }
+  })(),
+  trialDays: TRIAL_DAYS,
   // New registrations get a server-side trial when true (default).
   grantTrialOnRegister: process.env.COVE_GRANT_TRIAL_ON_REGISTER !== 'false',
-  // Phase 8A keeps the app usable while billing is tested.
-  enforceBilling: process.env.COVE_ENFORCE_BILLING === 'true',
-  // Optional AI marketing provider (OpenAI-compatible). Never expose to the client.
-  ai: {
-    provider: process.env.AI_PROVIDER || 'openai',
-    apiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    // Local-only demo content. Forced off in production even if env is set.
-    mockMode: (() => {
-      const requested = process.env.AI_MOCK_MODE === 'true';
-      const production = (process.env.NODE_ENV || 'development') === 'production';
-      if (requested && production) {
-        console.warn('[ai] AI_MOCK_MODE=true is ignored when NODE_ENV=production.');
-        return false;
-      }
-      return requested;
-    })(),
-  },
+  // Pauses the storefront and new orders once a shop has no trial or paid access.
+  // On unless explicitly set to "false".
+  enforceBilling: process.env.COVE_ENFORCE_BILLING !== 'false',
   // Image storage. Uploads fail with a clear error until all three values are set.
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
@@ -161,3 +167,29 @@ module.exports = {
   },
   appUrl: process.env.APP_URL || clientOrigins[0],
 };
+
+// Production keeps running without these, but the related feature is silently unavailable.
+if (isProduction) {
+  const missing = [
+    ['RAZORPAY_KEY_ID', module.exports.razorpay.keyId],
+    ['RAZORPAY_KEY_SECRET', module.exports.razorpay.keySecret],
+    ['RAZORPAY_WEBHOOK_SECRET', module.exports.razorpay.webhookSecret],
+    ['RAZORPAY_PRO_PLAN_ID', module.exports.razorpay.planId],
+    ['RAZORPAY_ADVANCED_PLAN_ID', module.exports.razorpay.advancedPlanId],
+    ['EMAIL_PROVIDER', module.exports.email.provider],
+    ['EMAIL_FROM', module.exports.email.from],
+    ['EMAIL_API_KEY', module.exports.email.apiKey],
+    ['CLOUDINARY_CLOUD_NAME', module.exports.cloudinary.cloudName],
+    ['CLOUDINARY_API_KEY', module.exports.cloudinary.apiKey],
+    ['CLOUDINARY_API_SECRET', module.exports.cloudinary.apiSecret],
+    ['PUBLIC_SITE_URL', module.exports.publicSiteUrl],
+    ['CRON_SECRET', module.exports.cronSecret],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) {
+    console.warn(`[config] Not set in production: ${missing.join(', ')}. Related features stay off until they are.`);
+  }
+  const emailProvider = module.exports.email.provider;
+  if (emailProvider && emailProvider !== 'resend') {
+    console.warn(`[config] EMAIL_PROVIDER=${emailProvider} does not deliver email. Use EMAIL_PROVIDER=resend in production.`);
+  }
+}

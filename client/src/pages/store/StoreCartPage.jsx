@@ -1,9 +1,38 @@
+import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, Minus, Package, Plus } from 'lucide-react';
 import EmptyState from '../../components/ui/EmptyState';
 import { useCart } from '../../context/CartContext';
 import { formatPrice } from '../../utils/display';
 import { mediaUrl } from '../../utils/media';
+
+// Clearing the box while typing must not remove the item; only Remove does that.
+function QuantityInput({ label, quantity, onCommit }) {
+  const [draft, setDraft] = useState(String(quantity));
+
+  useEffect(() => {
+    setDraft(String(quantity));
+  }, [quantity]);
+
+  function commit() {
+    const next = Number(draft);
+    if (Number.isInteger(next) && next >= 1) onCommit(next);
+    else setDraft(String(quantity));
+  }
+
+  return (
+    <input
+      aria-label={label}
+      inputMode="numeric"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value.replace(/\D/g, '').slice(0, 4))}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+      }}
+    />
+  );
+}
 
 export default function StoreCartPage() {
   const { slug } = useParams();
@@ -47,11 +76,10 @@ export default function StoreCartPage() {
                     >
                       <Minus size={14} />
                     </button>
-                    <input
-                      aria-label={`Quantity for ${item.name}`}
-                      inputMode="numeric"
-                      value={item.quantity}
-                      onChange={(event) => setQuantity(item.productId, Number(event.target.value))}
+                    <QuantityInput
+                      label={`Quantity for ${item.name}`}
+                      quantity={item.quantity}
+                      onCommit={(next) => setQuantity(item.productId, next)}
                     />
                     <button
                       type="button"
@@ -84,9 +112,11 @@ export default function StoreCartPage() {
               <strong>{formatPrice(subtotal, currency)}</strong>
             </div>
             <p className="muted">
-              {business?.deliveryEnabled
-                ? `Delivery fee ${formatPrice(business.deliveryFee || 0, currency)} is added at checkout if you choose delivery.`
-                : 'Final price is confirmed when you place the order.'}
+              {business?.deliveryEnabled && Number(business.deliveryFee) > 0
+                ? `Delivery fee ${formatPrice(business.deliveryFee, currency)} is added at checkout if you choose delivery.`
+                : business?.deliveryEnabled
+                  ? 'Delivery is free. Final price is confirmed when you place the order.'
+                  : 'Final price is confirmed when you place the order.'}
             </p>
             <div className="store-cart-actions">
               <Link className="primary" to={`/store/${slug}/checkout`}>Checkout</Link>

@@ -46,11 +46,14 @@ export function CartProvider({ slug, children }) {
     function addItem(product, quantity = 1) {
       if (!product?.available || product.stockQuantity < 1) return false;
       const addBy = Math.max(1, Math.min(product.stockQuantity, Number(quantity) || 1));
-      let added = false;
+      // Decided from the rendered cart, not inside the state updater, so the result is known synchronously.
+      const existing = items.find((item) => item.productId === product.id);
+      if (existing && Math.min(product.stockQuantity, existing.quantity + addBy) === existing.quantity) {
+        return false;
+      }
       setItems((current) => {
-        const existing = current.find((item) => item.productId === product.id);
-        if (!existing) {
-          added = true;
+        const inCart = current.find((item) => item.productId === product.id);
+        if (!inCart) {
           return [...current, {
             productId: product.id,
             name: product.name,
@@ -60,9 +63,7 @@ export function CartProvider({ slug, children }) {
             stockQuantity: product.stockQuantity,
           }];
         }
-        const nextQty = Math.min(product.stockQuantity, existing.quantity + addBy);
-        if (nextQty === existing.quantity) return current;
-        added = true;
+        const nextQty = Math.min(product.stockQuantity, inCart.quantity + addBy);
         return current.map((item) => (
           item.productId === product.id
             ? {
@@ -76,7 +77,7 @@ export function CartProvider({ slug, children }) {
             : item
         ));
       });
-      return added;
+      return true;
     }
 
     function setQuantity(productId, quantity) {

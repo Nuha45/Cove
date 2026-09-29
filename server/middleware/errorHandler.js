@@ -33,8 +33,10 @@ function errorHandler(err, req, res, next) {
     return;
   }
 
-  const statusCode = err.statusCode || 500;
   const trusted = Boolean(err.statusCode);
+  // Library errors (body parser, aborted requests) carry a 4xx `status` but text that isn't meant for users.
+  const clientStatus = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : null;
+  const statusCode = err.statusCode || clientStatus || 500;
   if (statusCode >= 500) {
     // Never log secrets; ApiError messages are already safe for operators.
     console.error(trusted ? `[api ${statusCode}] ${err.message}` : err);
@@ -45,8 +47,9 @@ function errorHandler(err, req, res, next) {
       ? err.message
       : statusCode >= 500
         ? 'Something went wrong. Please try again.'
-        : err.message,
-    errors: err.errors,
+        : 'That request was not valid. Please try again.',
+    // Only ApiError field details are meant for the browser.
+    errors: trusted ? err.errors : undefined,
   });
 }
 

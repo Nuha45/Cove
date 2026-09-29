@@ -6,6 +6,19 @@ function createConfirmationToken() {
   return crypto.randomBytes(TOKEN_BYTES).toString('base64url');
 }
 
+/**
+ * Same checkout key → same token, so a retried checkout finds the order it already created
+ * instead of placing a second one. The key is random per checkout and only the shopper's
+ * browser holds it; the server secret keeps the token unguessable from the key's shape.
+ */
+function confirmationTokenForCheckout(businessId, checkoutKey) {
+  const { jwtSecret } = require('../config/env');
+  return crypto
+    .createHmac('sha256', jwtSecret)
+    .update(`cove-checkout:${String(businessId)}:${checkoutKey}`, 'utf8')
+    .digest('base64url');
+}
+
 function hashConfirmationToken(token) {
   return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
 }
@@ -19,6 +32,7 @@ function isConfirmationTokenShape(token) {
 
 module.exports = {
   createConfirmationToken,
+  confirmationTokenForCheckout,
   hashConfirmationToken,
   isConfirmationTokenShape,
 };

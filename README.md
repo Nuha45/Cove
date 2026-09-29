@@ -110,7 +110,7 @@ The frontend host must rewrite unknown paths (for example `/store/<slug>` and `/
 | `TRUST_PROXY` | Proxy hops in front of the API. Defaults to `1` in production |
 | `COOKIE_SAME_SITE` | `lax` for same-site layouts, otherwise leave unset |
 | `PUBLIC_SITE_URL` | Public frontend origin. Turns on `/api/seo/sitemap.xml` |
-| `RAZORPAY_*`, `EMAIL_*`, `OPENAI_API_KEY` | Optional features, same as in `server/.env.example` |
+| `RAZORPAY_*`, `EMAIL_*` | Optional features, same as in `server/.env.example` |
 
 `GET /api/health` returns 200 when the database is connected and 503 otherwise; use it as the host health check. The API shuts down cleanly on `SIGTERM`.
 

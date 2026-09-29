@@ -4,6 +4,7 @@ const WebhookEvent = require('../models/WebhookEvent');
 const ApiError = require('../utils/ApiError');
 const { PROVIDER, mapRazorpayStatus } = require('../utils/subscriptionStatus');
 const razorpayService = require('./razorpayService');
+const { hasPaidAccess } = require('../utils/entitlements');
 
 function unixToDate(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -40,13 +41,49 @@ async function claimEvent(eventId, eventType) {
   }
 }
 
-async function applySubscriptionEntity(entity, eventType) {
+const PAYMENT_EVENTS = new Set(['subscription.activated', 'subscription.charged']);
+
+/**
+ * A seller paid through a Razorpay subscription Cove created but no longer points at
+ * (for example an earlier checkout that was replaced). The businessId comes from the
+ * notes Cove set at creation and arrives inside a signature-verified webhook.
+ * Only adopted when the shop has no paid access of its own, so it never replaces a live plan.
+ */
+async function adoptOrphanedSubscription(entity, eventType) {
+  if (!PAYMENT_EVENTS.has(eventType)) return null;
+  const businessId = entity.notes?.businessId;
+  if (!businessId || !mongoose.isValidObjectId(businessId)) return null;
+  const subscription = await Subscription.findOne({ businessId });
+  if (!subscription || hasPaidAccess(subscription)) {
+    if (subscription) {
+      safeLog(eventType, {
+        result: 'ignored',
+        reason: 'second_paid_subscription',
+        businessId: String(businessId),
+        providerSubscriptionId: entity.id,
+      });
+    }
+    return null;
+  }
+  subscription.providerSubscriptionId = entity.id;
+  subscription.lastProviderEventAt = null;
+  subscription.lastProviderStatus = '';
+  subscription.cancelAtPeriodEnd = false;
+  safeLog(eventType, { result: 'adopted', businessId: String(businessId), providerSubscriptionId: entity.id });
+  return subscription;
+}
+
+const TERMINAL_PROVIDER_STATUSES = new Set(['cancelled', 'completed', 'expired']);
+const TERMINAL_EVENTS = new Set(['subscription.cancelled', 'subscription.completed']);
+
+async function applySubscriptionEntity(entity, eventType, eventAt = null) {
   if (!entity?.id) {
     safeLog(eventType, { result: 'ignored', reason: 'missing_subscription' });
     return;
   }
 
-  const subscription = await Subscription.findOne({ providerSubscriptionId: entity.id });
+  let subscription = await Subscription.findOne({ providerSubscriptionId: entity.id });
+  if (!subscription) subscription = await adoptOrphanedSubscription(entity, eventType);
   if (!subscription) {
     safeLog(eventType, {
       result: 'ignored',
@@ -56,10 +93,33 @@ async function applySubscriptionEntity(entity, eventType) {
     return;
   }
 
+  // Razorpay retries can arrive after newer events. Never let an older event roll state back.
+  if (eventAt && subscription.lastProviderEventAt && eventAt < subscription.lastProviderEventAt) {
+    safeLog(eventType, { result: 'ignored', reason: 'stale_event', providerSubscriptionId: entity.id });
+    return;
+  }
+  // An ended Razorpay subscription cannot come back to life.
+  if (
+    subscription.status === 'cancelled'
+    && TERMINAL_PROVIDER_STATUSES.has(subscription.lastProviderStatus)
+    && !TERMINAL_EVENTS.has(eventType)
+  ) {
+    safeLog(eventType, { result: 'ignored', reason: 'subscription_ended', providerSubscriptionId: entity.id });
+    return;
+  }
+
+  const previousStatus = subscription.status;
   const mapped = mapRazorpayStatus(entity.status, { trialEndAt: subscription.trialEndAt });
   subscription.lastProviderStatus = entity.status || subscription.lastProviderStatus;
   if (entity.customer_id) subscription.providerCustomerId = entity.customer_id;
-  if (entity.plan_id) subscription.providerPlanId = entity.plan_id;
+  if (entity.plan_id) {
+    subscription.providerPlanId = entity.plan_id;
+    const planKey = razorpayService.planKeyForProviderPlanId(entity.plan_id);
+    if (planKey) {
+      subscription.plan = planKey;
+      if (subscription.scheduledPlan === planKey) subscription.scheduledPlan = '';
+    }
+  }
 
   const periodStart = unixToDate(entity.current_start);
   const periodEnd = unixToDate(entity.current_end);
@@ -87,8 +147,21 @@ async function applySubscriptionEntity(entity, eventType) {
     subscription.status = 'active';
   }
   if (eventType === 'subscription.authenticated') {
-    subscription.status = mapRazorpayStatus('authenticated', { trialEndAt: subscription.trialEndAt }) || 'trialing';
+    subscription.status = mapRazorpayStatus('authenticated', { trialEndAt: subscription.trialEndAt });
   }
+
+  if (subscription.status === 'past_due') {
+    if (previousStatus !== 'past_due' || !subscription.pastDueSince) {
+      subscription.pastDueSince = eventAt || new Date();
+    }
+  } else {
+    subscription.pastDueSince = null;
+  }
+  if (subscription.status === 'cancelled') {
+    subscription.cancelAtPeriodEnd = false;
+    subscription.scheduledPlan = '';
+  }
+  if (eventAt) subscription.lastProviderEventAt = eventAt;
 
   await subscription.save();
   safeLog(eventType, {
@@ -109,6 +182,7 @@ const HANDLED_EVENTS = new Set([
   'subscription.completed',
   'subscription.paused',
   'subscription.resumed',
+  'subscription.updated',
 ]);
 
 async function processRazorpayWebhook({ rawBody, signature, eventIdHeader }) {
@@ -140,19 +214,16 @@ async function processRazorpayWebhook({ rawBody, signature, eventIdHeader }) {
     return { ignored: true };
   }
 
-  if (eventType === 'subscription.resumed') {
-    const entity = extractSubscription(payload);
-    if (entity) {
-      entity.status = 'active';
-      await applySubscriptionEntity(entity, eventType);
-    } else {
-      safeLog(eventType, { result: 'ignored', reason: 'missing_subscription' });
-    }
-    return { ok: true };
-  }
-
   const entity = extractSubscription(payload);
-  await applySubscriptionEntity(entity, eventType);
+  const eventAt = unixToDate(payload.created_at);
+  try {
+    if (eventType === 'subscription.resumed' && entity) entity.status = 'active';
+    await applySubscriptionEntity(entity, eventType, eventAt);
+  } catch (err) {
+    // Release the claim so Razorpay's retry of this event is processed instead of skipped.
+    await WebhookEvent.deleteOne({ provider: PROVIDER, eventId: String(eventId) }).catch(() => {});
+    throw err;
+  }
   return { ok: true };
 }
 

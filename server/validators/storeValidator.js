@@ -25,6 +25,25 @@ const storefrontQueryRules = [
 
 const productRules = [slugRule, productIdRule];
 
+const trackEventRules = [
+  slugRule,
+  body('type')
+    .isIn(['visit', 'product_view', 'add_to_cart'])
+    .withMessage('Unknown event.'),
+  body('visitorId')
+    .isString()
+    .matches(/^[A-Za-z0-9-]{16,64}$/)
+    .withMessage('Unknown event.'),
+  body('productId')
+    .optional({ values: 'null' })
+    .custom(isObjectId)
+    .withMessage('Unknown event.'),
+  body('quantity')
+    .optional()
+    .isInt({ min: 1, max: 1000 })
+    .withMessage('Unknown event.'),
+];
+
 const checkoutRules = [
   slugRule,
   body('customer')
@@ -75,8 +94,8 @@ const checkoutRules = [
     if (text.length < 5) {
       throw new Error('Please enter a delivery address.');
     }
-    if (text.length > 200) {
-      throw new Error('Delivery address must be 200 characters or fewer.');
+    if (text.length > 400) {
+      throw new Error('Delivery address must be 400 characters or fewer.');
     }
     return true;
   }),
@@ -89,6 +108,11 @@ const checkoutRules = [
     .optional({ values: 'falsy' })
     .isIn(['qr', 'payment_link', 'instructions', 'pay_on_pickup'])
     .withMessage('Please choose a valid payment method.'),
+  body('checkoutKey')
+    .optional({ values: 'falsy' })
+    .isString()
+    .matches(/^[A-Za-z0-9_-]{32,64}$/)
+    .withMessage('Please refresh the page and try again.'),
 ];
 
 const confirmationRules = [
@@ -114,6 +138,7 @@ const paymentReferenceRules = [
 module.exports = {
   storefrontQueryRules,
   productRules,
+  trackEventRules,
   checkoutRules,
   confirmationRules,
   paymentReferenceRules,

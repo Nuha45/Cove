@@ -51,7 +51,7 @@ const publicCreateRules = [
   body('quantity')
     .optional({ values: 'falsy' })
     .isInt({ min: 1, max: 100000 })
-    .withMessage('Quantity must be a whole number from 1 upwards.'),
+    .withMessage('Quantity must be a whole number from 1 to 100,000.'),
   body('notes')
     .optional({ values: 'falsy' })
     .trim()

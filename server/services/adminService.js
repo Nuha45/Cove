@@ -6,8 +6,14 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const CustomerWant = require('../models/CustomerWant');
+const CustomerWantVote = require('../models/CustomerWantVote');
+const Invoice = require('../models/Invoice');
+const Notification = require('../models/Notification');
+const StoreEvent = require('../models/StoreEvent');
+const EmailDelivery = require('../models/EmailDelivery');
+const OrderCounter = require('../models/OrderCounter');
 const ApiError = require('../utils/ApiError');
-const { COVE_PRO } = require('../utils/covePlan');
+const { COVE_PRO, PLANS, PLAN_KEYS } = require('../utils/covePlan');
 const { ACCOUNT_STATUS_LABELS, accountStatus } = require('../utils/adminStatus');
 
 const TRIAL_SOON_DAYS = 7;
@@ -16,7 +22,7 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 const MAX_SEARCH_LENGTH = 80;
 
-const SUBSCRIPTION_FIELDS = 'businessId status trialStartAt trialEndAt currentPeriodEndAt cancelledAt cancelAtPeriodEnd providerSubscriptionId';
+const SUBSCRIPTION_FIELDS = 'businessId status plan trialStartAt trialEndAt currentPeriodEndAt cancelledAt cancelAtPeriodEnd providerSubscriptionId lastProviderStatus';
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -34,6 +40,10 @@ function subscriptionSummary(subscription, now = new Date()) {
     accountStatus: bucket,
     accountStatusLabel: ACCOUNT_STATUS_LABELS[bucket],
     billingStatus: subscription?.status || 'none',
+    // Only a real Razorpay subscription has a chosen plan; trials and lapsed shops show none.
+    planName: subscription?.providerSubscriptionId && PLANS[subscription.plan || 'pro']
+      ? PLANS[subscription.plan || 'pro'].name
+      : null,
     trialStartAt: subscription?.trialStartAt || null,
     trialEndAt: subscription?.trialEndAt || null,
     currentPeriodEndAt: subscription?.currentPeriodEndAt || null,
@@ -54,6 +64,7 @@ function businessRow(business, owner, subscription, now) {
     slug: business.slug,
     category: business.category,
     createdAt: business.createdAt,
+    archivedAt: business.archivedAt || null,
     owner: ownerSummary(owner),
     subscription: subscriptionSummary(subscription, now),
   };
@@ -74,7 +85,7 @@ async function loadOwnersAndSubscriptions(businesses) {
 
 async function getOverview(now = new Date()) {
   const [businessIds, subscriptions] = await Promise.all([
-    Business.find({}).select('_id').lean(),
+    Business.find({ archivedAt: null }).select('_id').lean(),
     Subscription.find({}).select(SUBSCRIPTION_FIELDS).lean(),
   ]);
 
@@ -85,9 +96,19 @@ async function getOverview(now = new Date()) {
   });
 
   const counts = { active: 0, trial: 0, payment_required: 0, restricted: 0 };
+  const activeByPlan = { pro: 0, advanced: 0 };
   existing.forEach((id) => {
-    counts[accountStatus(subsByBusiness.get(id), now)] += 1;
+    const subscription = subsByBusiness.get(id);
+    const bucket = accountStatus(subscription, now);
+    counts[bucket] += 1;
+    if (bucket === 'active') activeByPlan[subscription?.plan === 'advanced' ? 'advanced' : 'pro'] += 1;
   });
+  const planRevenue = PLAN_KEYS.map((key) => ({
+    key,
+    name: PLANS[key].name,
+    pricePerMonth: PLANS[key].amountDisplay,
+    activeSubscriptions: activeByPlan[key] || 0,
+  }));
 
   const soonCutoff = new Date(now.getTime() + TRIAL_SOON_DAYS * 24 * 60 * 60 * 1000);
   const endingSoon = [...subsByBusiness.values()]
@@ -104,7 +125,7 @@ async function getOverview(now = new Date()) {
     : [];
   const soonById = new Map(soonBusinesses.map((item) => [String(item._id), item]));
 
-  const recent = await Business.find({})
+  const recent = await Business.find({ archivedAt: null })
     .sort({ createdAt: -1 })
     .limit(RECENT_SIGNUPS)
     .select('name slug category createdAt ownerId')
@@ -131,13 +152,12 @@ async function getOverview(now = new Date()) {
         };
       }),
     },
-    // Estimate only: active subscriptions × the server-side Cove Pro price.
+    // Estimate only: active subscriptions per plan × the server-side plan price.
     revenue: {
-      plan: COVE_PRO.name,
       currency: COVE_PRO.currency,
-      pricePerMonth: COVE_PRO.amountDisplay,
       activeSubscriptions: counts.active,
-      estimatedMrr: counts.active * COVE_PRO.amountDisplay,
+      estimatedMrr: planRevenue.reduce((sum, item) => sum + item.activeSubscriptions * item.pricePerMonth, 0),
+      plans: planRevenue,
     },
     recentSignups: recent.map((business) => businessRow(
       business,
@@ -177,7 +197,7 @@ async function listBusinesses(input = {}, now = new Date()) {
     .sort({ createdAt: -1, _id: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
-    .select('name slug category createdAt ownerId')
+    .select('name slug category createdAt archivedAt ownerId')
     .lean();
   const { ownersById, subsByBusiness } = await loadOwnersAndSubscriptions(businesses);
 
@@ -201,13 +221,16 @@ function latest(candidates) {
     .sort((a, b) => new Date(b.at) - new Date(a.at))[0] || null;
 }
 
-async function getBusinessDetail(id, now = new Date()) {
+function parseBusinessId(id) {
   if (typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id) || String(new mongoose.Types.ObjectId(id)) !== id) {
     throw new ApiError(404, 'We could not find that business.');
   }
+  return id;
+}
 
-  const business = await Business.findById(id)
-    .select('name slug category city storefrontActive createdAt ownerId')
+async function getBusinessDetail(id, now = new Date()) {
+  const business = await Business.findById(parseBusinessId(id))
+    .select('name slug category city storefrontActive archivedAt createdAt ownerId')
     .lean();
   if (!business) throw new ApiError(404, 'We could not find that business.');
 
@@ -249,6 +272,7 @@ async function getBusinessDetail(id, now = new Date()) {
     category: business.category,
     city: business.city || '',
     storefrontActive: business.storefrontActive !== false,
+    archivedAt: business.archivedAt || null,
     createdAt: business.createdAt,
     owner: owner ? { name: owner.name, email: owner.email, createdAt: owner.createdAt } : null,
     subscription: subscriptionSummary(subscription, now),
@@ -263,9 +287,92 @@ async function getBusinessDetail(id, now = new Date()) {
   };
 }
 
+async function findBusinessForAction(id, admin) {
+  const business = await Business.findById(parseBusinessId(id));
+  if (!business) throw new ApiError(404, 'We could not find that business.');
+  if (admin && String(admin.businessId) === String(business._id)) {
+    throw new ApiError(400, 'You cannot archive or delete your own shop from the admin panel.');
+  }
+  const adminMember = await User.exists({ businessId: business._id, isPlatformAdmin: true });
+  if (adminMember) {
+    throw new ApiError(400, 'This shop belongs to a platform admin and cannot be archived or deleted here.');
+  }
+  return business;
+}
+
+async function archiveBusiness(id, admin, now = new Date()) {
+  const business = await findBusinessForAction(id, admin);
+  if (!business.archivedAt) {
+    business.archivedAt = now;
+    await business.save();
+    // Sign the owner out everywhere; login is refused while the shop is archived.
+    await User.updateMany({ businessId: business._id }, { $inc: { tokenVersion: 1 } });
+  }
+  return getBusinessDetail(business._id.toString(), now);
+}
+
+async function restoreBusiness(id, admin, now = new Date()) {
+  const business = await findBusinessForAction(id, admin);
+  if (business.archivedAt) {
+    business.archivedAt = null;
+    await business.save();
+  }
+  return getBusinessDetail(business._id.toString(), now);
+}
+
+// Permanent. Only allowed once the shop is archived and the admin retypes the shop link.
+async function deleteBusiness(id, admin, { confirmSlug } = {}) {
+  const business = await findBusinessForAction(id, admin);
+  if (!business.archivedAt) {
+    throw new ApiError(400, 'Archive this shop before deleting it permanently.');
+  }
+  if (String(confirmSlug || '').trim().toLowerCase() !== business.slug) {
+    throw new ApiError(400, 'Type the shop link exactly to confirm deletion.', [
+      { field: 'confirmSlug', message: `Type "${business.slug}" to confirm.` },
+    ]);
+  }
+
+  const businessId = business._id;
+  const subscription = await Subscription.findOne({ businessId }).select('status providerSubscriptionId').lean();
+  if (subscription?.providerSubscriptionId && subscription.status !== 'cancelled') {
+    throw new ApiError(409, 'This shop still has a Razorpay subscription. Cancel it in Razorpay before deleting the shop.');
+  }
+
+  const scoped = { businessId };
+  const results = await Promise.all([
+    Product.deleteMany(scoped),
+    Order.deleteMany(scoped),
+    Customer.deleteMany(scoped),
+    CustomerWant.deleteMany(scoped),
+    CustomerWantVote.deleteMany(scoped),
+    Invoice.deleteMany(scoped),
+    Notification.deleteMany(scoped),
+    StoreEvent.deleteMany(scoped),
+    EmailDelivery.deleteMany(scoped),
+    OrderCounter.deleteMany(scoped),
+    Subscription.deleteMany(scoped),
+    User.deleteMany(scoped),
+  ]);
+  await Business.deleteOne({ _id: businessId });
+
+  const [products, orders, customers] = results;
+  return {
+    id: businessId.toString(),
+    name: business.name,
+    deleted: {
+      products: products.deletedCount,
+      orders: orders.deletedCount,
+      customers: customers.deletedCount,
+    },
+  };
+}
+
 module.exports = {
   getOverview,
   listBusinesses,
   getBusinessDetail,
+  archiveBusiness,
+  restoreBusiness,
+  deleteBusiness,
   MAX_PAGE_SIZE,
 };

@@ -137,6 +137,11 @@ export default function RegisterPage() {
         <button className="primary" type="submit" disabled={submitting}>
           {submitting ? 'Creating your workspace...' : 'Create workspace'}
         </button>
+        <p className="auth-legal">
+          By creating a workspace, you agree to the{' '}
+          <Link to="/terms" target="_blank" rel="noopener">Terms of Service</Link> and{' '}
+          <Link to="/privacy" target="_blank" rel="noopener">Privacy Policy</Link>.
+        </p>
       </form>
     </AuthLayout>
   );

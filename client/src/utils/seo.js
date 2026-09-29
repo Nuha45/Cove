@@ -1,12 +1,15 @@
 import { useEffect } from 'react';
 
 export const SITE_NAME = 'Cove';
-export const DEFAULT_TITLE = 'Cove — Online storefronts for small businesses';
+export const DEFAULT_TITLE = 'Cove — Your online store, beautifully simple';
 export const DEFAULT_DESCRIPTION =
-  'Cove helps small businesses sell online with a simple storefront, orders, and customer requests in one place.';
+  'Cove gives independent sellers a ready-made online storefront with products, orders, customers and payments '
+  + 'in one place. Start with a 7-day free trial.';
 export const PRIVATE_TITLE = 'Cove';
 
 const INDEXABLE_PATHS = [
+  /^\/$/,
+  /^\/(terms|privacy|refund-policy)\/?$/,
   /^\/store\/[^/]+\/?$/,
   /^\/store\/[^/]+\/product\/[^/]+\/?$/,
 ];
@@ -176,6 +179,7 @@ export function applySeo({
   type = 'website',
   siteName = SITE_NAME,
   jsonLd = null,
+  twitterCard = '',
 } = {}) {
   if (typeof document === 'undefined') return;
   document.title = title;
@@ -191,7 +195,7 @@ export function applySeo({
   setMeta('property', 'og:image', image);
   setMeta('property', 'og:image:alt', image ? imageAlt : '');
 
-  setMeta('name', 'twitter:card', image ? 'summary_large_image' : 'summary');
+  setMeta('name', 'twitter:card', twitterCard || (image ? 'summary_large_image' : 'summary'));
   setMeta('name', 'twitter:title', title);
   setMeta('name', 'twitter:description', description);
   setMeta('name', 'twitter:image', image);

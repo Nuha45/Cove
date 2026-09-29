@@ -189,7 +189,7 @@ const orderSchema = new mongoose.Schema(
     deliveryAddress: {
       type: String,
       trim: true,
-      maxlength: 200,
+      maxlength: 400,
       default: '',
     },
     notes: {

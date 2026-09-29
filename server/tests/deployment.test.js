@@ -150,6 +150,10 @@ describe('deployment readiness', { timeout: 120000 }, () => {
     const live = await request('GET', '/api/seo/sitemap.xml');
     assert.equal(live.status, 200);
     assert.match(live.headers.get('content-type'), /application\/xml/);
+    assert.ok(live.text.includes('<loc>https://shop.test/</loc>'));
+    for (const page of ['/terms', '/privacy', '/refund-policy']) {
+      assert.ok(live.text.includes(`<loc>https://shop.test${page}</loc>`), page);
+    }
     assert.ok(live.text.includes(`<loc>https://shop.test/store/${seller.slug}</loc>`));
     assert.ok(live.text.includes(`/store/${seller.slug}/product/${product._id}</loc>`));
     assert.ok(!live.text.includes(String(archived._id)));
@@ -172,7 +176,11 @@ describe('client SEO helpers', () => {
     robots = await import(pathToFileURL(path.join(utils, 'robots.js')).href);
   });
 
-  it('only indexes storefront and product pages', () => {
+  it('only indexes the homepage, legal, storefront and product pages', () => {
+    assert.equal(seo.isIndexablePath('/'), true);
+    for (const page of ['/terms', '/privacy', '/refund-policy']) {
+      assert.equal(seo.isIndexablePath(page), true, page);
+    }
     assert.equal(seo.isIndexablePath('/store/nuha'), true);
     assert.equal(seo.isIndexablePath('/store/nuha/product/abc123'), true);
     for (const pathname of [
@@ -184,6 +192,8 @@ describe('client SEO helpers', () => {
       '/dashboard',
       '/admin',
       '/login',
+      '/register',
+      '/billing',
       '/marketing',
     ]) {
       assert.equal(seo.isIndexablePath(pathname), false, pathname);
@@ -237,6 +247,7 @@ describe('client SEO helpers', () => {
     assert.match(plain, /Disallow: \/admin/);
     assert.match(plain, /Disallow: \/api\//);
     assert.match(plain, /Allow: \/store\//);
+    assert.match(plain, /Allow: \/api\/seo\/sitemap\.xml/);
     assert.equal(plain.includes('Sitemap:'), false);
     assert.equal(plain.includes('/store/'.concat('cart')), false);
 

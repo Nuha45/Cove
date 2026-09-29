@@ -8,7 +8,7 @@ export default function Sidebar({ business, businesses, user, open, onNavigate, 
   const canSwitchShops = Array.isArray(businesses) && businesses.length > 1;
 
   return (
-    <aside className={`sidebar ${open ? 'open' : ''}`} aria-hidden={open ? undefined : undefined}>
+    <aside className={`sidebar ${open ? 'open' : ''}`} id="workspace-sidebar">
       <div className="sidebar-scroll">
         <div className="brand">
           <CoveLogo />

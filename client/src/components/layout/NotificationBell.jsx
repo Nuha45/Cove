@@ -22,6 +22,9 @@ function hrefFor(notification) {
       ? `/customer-wants/${notification.relatedEntityId}`
       : '/customer-wants';
   }
+  if (notification.relatedEntityType === 'product' || notification.type === 'LOW_STOCK') {
+    return '/products';
+  }
   return null;
 }
 
@@ -208,7 +211,7 @@ export default function NotificationBell() {
           </div>
           {loading ? <p className="notification-empty">Loading...</p> : null}
           {error ? <p className="form-error">{error}</p> : null}
-          {!loading && !items.length ? (
+          {!loading && !error && !items.length ? (
             <p className="notification-empty">No notifications yet.</p>
           ) : null}
           <ul className="notification-list">

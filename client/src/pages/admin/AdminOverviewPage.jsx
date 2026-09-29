@@ -80,8 +80,10 @@ export default function AdminOverviewPage() {
                 <div className="wide">
                   <dt>How this is calculated</dt>
                   <dd className="muted">
-                    Active subscriptions × {overview.revenue.plan} price ({formatPrice(overview.revenue.pricePerMonth, overview.revenue.currency)}/month).
-                    Trials and payment-required accounts are excluded.
+                    {(overview.revenue.plans || []).map((plan) => (
+                      `${plan.activeSubscriptions} × ${plan.name} (${formatPrice(plan.pricePerMonth, overview.revenue.currency)}/month)`
+                    )).join(' + ')}.
+                    {' '}Trials and payment-required accounts are excluded.
                   </dd>
                 </div>
               </dl>
