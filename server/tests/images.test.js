@@ -10,8 +10,11 @@ const Business = require('../models/Business');
 const Product = require('../models/Product');
 const Subscription = require('../models/Subscription');
 const Notification = require('../models/Notification');
+const zlib = require('zlib');
 const imageStorage = require('../services/imageStorage');
+const adminService = require('../services/adminService');
 const { signToken } = require('../services/tokenService');
+const { MAX_BYTES } = require('../utils/imageUpload');
 
 const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const createdBusinessIds = [];
@@ -210,4 +213,281 @@ describe('Cloudinary image storage', { timeout: 120000 }, () => {
       Object.assign(env.cloudinary, saved.cloudinary);
     }
   });
+
+  describe('validation', () => {
+    async function productWith(image) {
+      return api('POST', '/api/products', {
+        token: seller.token,
+        body: { name: 'Check Ring', price: 100, stockQuantity: 1, images: [image] },
+      });
+    }
+
+    it('accepts valid PNG, JPEG and WebP images up to 4000 px', async () => {
+      for (const image of [pngDataUrl(4000, 1), pngDataUrl(1, 4000), jpegDataUrl(4000, 3000), webpDataUrl(4000, 4000)]) {
+        const response = await productWith(image);
+        assert.equal(response.status, 201, JSON.stringify(response.data));
+        assert.match(response.data.product.images[0], CLOUDINARY_URL);
+      }
+    });
+
+    it('rejects images wider or taller than 4000 px for every upload type', async () => {
+      for (const image of [pngDataUrl(4001, 1), pngDataUrl(1, 4001), jpegDataUrl(3000, 4001), webpDataUrl(4001, 10)]) {
+        const response = await productWith(image);
+        assert.equal(response.status, 400, image.slice(0, 30));
+        assert.match(JSON.stringify(response.data.errors), /4000/);
+      }
+      for (const field of ['logo', 'storefrontCoverImage', 'paymentQrImage']) {
+        const response = await api('PATCH', '/api/business/settings', {
+          token: seller.token,
+          body: { [field]: pngDataUrl(5000, 5000) },
+        });
+        assert.equal(response.status, 400, field);
+      }
+    });
+
+    it('enforces the 450 KB limit', async () => {
+      const oversized = Buffer.concat([pngBuffer(10, 10), Buffer.alloc(MAX_BYTES)]);
+      const response = await productWith(`data:image/png;base64,${oversized.toString('base64')}`);
+      assert.equal(response.status, 400);
+      const logo = await api('PATCH', '/api/business/settings', {
+        token: seller.token,
+        body: { logo: `data:image/png;base64,${oversized.toString('base64')}` },
+      });
+      assert.equal(logo.status, 400);
+    });
+
+    it('rejects SVG, GIF, mismatched types and malformed images', async () => {
+      const svg = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64')}`;
+      const gif = `data:image/gif;base64,${Buffer.from('GIF89a\x01\x00\x01\x00\x00\x00\x00;').toString('base64')}`;
+      const jpegAsPng = `data:image/png;base64,${jpegBuffer(10, 10).toString('base64')}`;
+      const truncatedPng = `data:image/png;base64,${pngBuffer(10, 10).subarray(0, 40).toString('base64')}`;
+      const headerOnlyJpeg = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x02]).toString('base64')}`;
+      for (const image of [svg, gif, jpegAsPng, truncatedPng, headerOnlyJpeg]) {
+        const response = await productWith(image);
+        assert.equal(response.status, 400, image.slice(0, 40));
+      }
+      const coverSvg = await api('PATCH', '/api/business/settings', {
+        token: seller.token,
+        body: { storefrontCoverImage: svg },
+      });
+      assert.equal(coverSvg.status, 400);
+    });
+  });
+
+  describe('replacement ordering', () => {
+    function failNextSave(Model) {
+      const original = Model.prototype.save;
+      Model.prototype.save = function failingSave() {
+        Model.prototype.save = original;
+        return Promise.reject(new Error('simulated save failure'));
+      };
+      return () => { Model.prototype.save = original; };
+    }
+
+    async function quietly(fn) {
+      const originalError = console.error;
+      console.error = () => {};
+      try {
+        return await fn();
+      } finally {
+        console.error = originalError;
+      }
+    }
+
+    it('keeps the old product image when the product save fails, and removes the new upload', async () => {
+      const created = await api('POST', '/api/products', {
+        token: seller.token,
+        body: { name: 'Order Ring', price: 100, stockQuantity: 1, images: [PNG] },
+      });
+      const [oldUrl] = created.data.product.images;
+      const restore = failNextSave(Product);
+      const uploadsBefore = imageStorage.memory.uploads.length;
+      try {
+        const response = await quietly(() => api('PATCH', `/api/products/${created.data.product.id}`, {
+          token: seller.token,
+          body: { images: [PNG] },
+        }));
+        assert.equal(response.status, 500);
+      } finally {
+        restore();
+      }
+
+      assert.equal(imageStorage.memory.deleted.includes(publicIdOf(oldUrl)), false);
+      assert.deepEqual((await Product.findById(created.data.product.id).lean()).images, [oldUrl]);
+      const newUpload = imageStorage.memory.uploads[uploadsBefore];
+      assert.ok(newUpload, 'the replacement was uploaded');
+      assert.ok(imageStorage.memory.deleted.includes(newUpload.publicId), 'orphaned upload is removed');
+    });
+
+    it('keeps the old logo when the settings save fails', async () => {
+      const first = await api('PATCH', '/api/business/settings', { token: seller.token, body: { logo: PNG } });
+      const oldUrl = first.data.business.logo;
+      const restore = failNextSave(Business);
+      try {
+        const response = await quietly(() => api('PATCH', '/api/business/settings', {
+          token: seller.token,
+          body: { logo: PNG },
+        }));
+        assert.equal(response.status, 500);
+      } finally {
+        restore();
+      }
+      assert.equal(imageStorage.memory.deleted.includes(publicIdOf(oldUrl)), false);
+      assert.equal((await Business.findById(seller.businessId).lean()).logo, oldUrl);
+    });
+
+    it('deletes the old image only after a successful save, and keeps the new image if cleanup fails', async () => {
+      const created = await api('POST', '/api/products', {
+        token: seller.token,
+        body: { name: 'Cleanup Ring', price: 100, stockQuantity: 1, images: [PNG] },
+      });
+      const [oldUrl] = created.data.product.images;
+
+      const replaced = await api('PATCH', `/api/products/${created.data.product.id}`, {
+        token: seller.token,
+        body: { images: [PNG] },
+      });
+      assert.equal(replaced.status, 200);
+      assert.ok(imageStorage.memory.deleted.includes(publicIdOf(oldUrl)));
+      const [secondUrl] = replaced.data.product.images;
+
+      const originalDelete = imageStorage.deleteImage;
+      const originalWarn = console.warn;
+      imageStorage.deleteImage = async () => { throw new Error('simulated Cloudinary outage'); };
+      console.warn = () => {};
+      try {
+        const again = await api('PATCH', `/api/products/${created.data.product.id}`, {
+          token: seller.token,
+          body: { images: [PNG] },
+        });
+        assert.equal(again.status, 200, JSON.stringify(again.data));
+        const [thirdUrl] = again.data.product.images;
+        assert.notEqual(thirdUrl, secondUrl);
+        assert.deepEqual((await Product.findById(created.data.product.id).lean()).images, [thirdUrl]);
+      } finally {
+        imageStorage.deleteImage = originalDelete;
+        console.warn = originalWarn;
+      }
+    });
+  });
+
+  describe('shop deletion cleanup', () => {
+    async function archivedTenant(label) {
+      const tenant = await registerTenant(label);
+      const logo = await api('PATCH', '/api/business/settings', { token: tenant.token, body: { logo: PNG } });
+      assert.equal(logo.status, 200, JSON.stringify(logo.data));
+      const business = await Business.findById(tenant.businessId);
+      business.archivedAt = new Date();
+      await business.save();
+      return { ...tenant, slug: business.slug };
+    }
+
+    it("deletes all four of the shop's Cloudinary folders and nothing else", async () => {
+      const tenant = await archivedTenant('cleanup');
+      const before = imageStorage.memory.deletedPrefixes.length;
+
+      const result = await adminService.deleteBusiness(tenant.businessId, null, { confirmSlug: tenant.slug });
+      assert.equal(result.id, tenant.businessId);
+
+      const prefixes = imageStorage.memory.deletedPrefixes.slice(before);
+      assert.deepEqual(prefixes.sort(), [
+        `cove/covers/${tenant.businessId}/`,
+        `cove/logos/${tenant.businessId}/`,
+        `cove/payment-qr/${tenant.businessId}/`,
+        `cove/products/${tenant.businessId}/`,
+      ]);
+      assert.equal(prefixes.some((prefix) => prefix.includes(seller.businessId)), false);
+      assert.equal(await Business.exists({ _id: tenant.businessId }), null);
+
+      const rerun = await imageStorage.deleteBusinessImages(tenant.businessId);
+      assert.equal(rerun.ok, true, 'cleanup is safe to repeat');
+      assert.equal((await imageStorage.deleteBusinessImages('not-an-id')).ok, false);
+    });
+
+    it('still deletes the shop when Cloudinary cleanup fails', async () => {
+      const tenant = await archivedTenant('cleanupfail');
+      const originalWarn = console.warn;
+      const warnings = [];
+      console.warn = (...args) => warnings.push(args.join(' '));
+      imageStorage.memory.failPrefixCleanup = true;
+      try {
+        const result = await adminService.deleteBusiness(tenant.businessId, null, { confirmSlug: tenant.slug });
+        assert.equal(result.id, tenant.businessId);
+      } finally {
+        imageStorage.memory.failPrefixCleanup = false;
+        console.warn = originalWarn;
+      }
+      assert.equal(await Business.exists({ _id: tenant.businessId }), null);
+      assert.equal(await User.exists({ businessId: tenant.businessId }), null);
+      assert.ok(warnings.some((line) => line.includes(`cove/products/${tenant.businessId}/`)));
+      assert.equal(warnings.some((line) => /api_secret|CLOUDINARY_API_SECRET/i.test(line)), false);
+    });
+  });
 });
+
+// Real PNG files (valid CRCs and zlib data), sized as requested.
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, crc]);
+}
+
+function pngBuffer(width, height) {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 0;
+  const rows = Buffer.alloc((width + 1) * height);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', zlib.deflateSync(rows)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function pngDataUrl(width, height) {
+  return `data:image/png;base64,${pngBuffer(width, height).toString('base64')}`;
+}
+
+// Structurally complete baseline JPEG container (SOI, SOF0, SOS, scan data, EOI).
+function jpegBuffer(width, height) {
+  const sof = Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, 0, 0, 0, 0, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01]);
+  sof.writeUInt16BE(height, 5);
+  sof.writeUInt16BE(width, 7);
+  const sos = Buffer.from([0xff, 0xda, 0x00, 0x0c, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3f, 0x00]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), sof, sos, Buffer.from([0x12, 0x34, 0x56]), Buffer.from([0xff, 0xd9])]);
+}
+
+function jpegDataUrl(width, height) {
+  return `data:image/jpeg;base64,${jpegBuffer(width, height).toString('base64')}`;
+}
+
+// Lossless WebP (VP8L) header with the requested size.
+function webpDataUrl(width, height) {
+  const buffer = Buffer.alloc(30);
+  buffer.write('RIFF', 0, 'ascii');
+  buffer.writeUInt32LE(22, 4);
+  buffer.write('WEBP', 8, 'ascii');
+  buffer.write('VP8L', 12, 'ascii');
+  buffer.writeUInt32LE(10, 16);
+  buffer[20] = 0x2f;
+  buffer.writeUInt32LE(((width - 1) & 0x3fff) | (((height - 1) & 0x3fff) << 14), 21);
+  return `data:image/webp;base64,${buffer.toString('base64')}`;
+}

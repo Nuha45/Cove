@@ -7,7 +7,8 @@ const productImage = createImageField({
 });
 
 // Keeps only this shop's existing images, and uploads new ones beside them.
-async function saveImages(businessId, images, previous = []) {
+// Pass `changes` (createImageChanges) to delete replaced images only after the product saves.
+async function saveImages(businessId, images, previous = [], changes = null) {
   if (!Array.isArray(images)) {
     throw productImage.fail('Images must be a list.');
   }
@@ -38,8 +39,9 @@ async function saveImages(businessId, images, previous = []) {
     throw err;
   }
 
+  created.forEach((item) => productImage.trackUpload(businessId, item, changes));
   const removed = previous.filter((item) => !kept.includes(item));
-  await Promise.all(removed.map((item) => productImage.remove(businessId, item)));
+  await Promise.all(removed.map((item) => productImage.discard(businessId, item, changes)));
   return kept;
 }
 

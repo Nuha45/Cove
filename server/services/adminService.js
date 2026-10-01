@@ -13,6 +13,7 @@ const StoreEvent = require('../models/StoreEvent');
 const EmailDelivery = require('../models/EmailDelivery');
 const OrderCounter = require('../models/OrderCounter');
 const ApiError = require('../utils/ApiError');
+const imageStorage = require('./imageStorage');
 const { COVE_PRO, PLANS, PLAN_KEYS } = require('../utils/covePlan');
 const { ACCOUNT_STATUS_LABELS, accountStatus } = require('../utils/adminStatus');
 
@@ -354,6 +355,7 @@ async function deleteBusiness(id, admin, { confirmSlug } = {}) {
     User.deleteMany(scoped),
   ]);
   await Business.deleteOne({ _id: businessId });
+  await imageStorage.deleteBusinessImages(businessId);
 
   const [products, orders, customers] = results;
   return {

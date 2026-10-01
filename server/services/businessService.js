@@ -13,6 +13,7 @@ const ADVANCED_SETTING_FIELDS = [
 const { saveLogo } = require('../utils/businessLogo');
 const { savePaymentQr } = require('../utils/paymentQrImage');
 const { saveStorefrontCover } = require('../utils/storefrontCover');
+const { createImageChanges } = require('../utils/imageUpload');
 const {
   normalizeTheme,
   normalizeAccent,
@@ -47,7 +48,21 @@ async function getOwnBusiness(businessId) {
   return business;
 }
 
+// Old logo/cover/QR files are deleted only after the settings save; new uploads are removed if it fails.
 async function updateSettings(businessId, input) {
+  const imageChanges = createImageChanges();
+  let business;
+  try {
+    business = await applySettings(businessId, input, imageChanges);
+  } catch (err) {
+    await imageChanges.rollback();
+    throw err;
+  }
+  await imageChanges.commit();
+  return business;
+}
+
+async function applySettings(businessId, input, imageChanges) {
   const business = await getOwnBusiness(businessId);
 
   if (requestsPlusAppearance(input)) {
@@ -117,7 +132,8 @@ async function updateSettings(businessId, input) {
     business.storefrontCoverImage = await saveStorefrontCover(
       businessId,
       input.storefrontCoverImage,
-      business.storefrontCoverImage || ''
+      business.storefrontCoverImage || '',
+      imageChanges
     );
     if (!business.storefrontCoverImage) {
       business.storefrontCoverFocusX = 50;
@@ -214,13 +230,14 @@ async function updateSettings(businessId, input) {
     ].slice(0, 6);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'logo')) {
-    business.logo = await saveLogo(businessId, input.logo, business.logo || '');
+    business.logo = await saveLogo(businessId, input.logo, business.logo || '', imageChanges);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentQrImage')) {
     business.paymentQrImage = await savePaymentQr(
       businessId,
       input.paymentQrImage,
-      business.paymentQrImage || ''
+      business.paymentQrImage || '',
+      imageChanges
     );
   }
 

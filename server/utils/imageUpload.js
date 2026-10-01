@@ -2,9 +2,12 @@ const path = require('path');
 const fs = require('fs/promises');
 const ApiError = require('./ApiError');
 const imageStorage = require('../services/imageStorage');
+const { readImageSize } = require('./imageDimensions');
 
 const LEGACY_ROOT = path.join(__dirname, '..', 'uploads');
 const MAX_BYTES = 450 * 1024;
+const MAX_EDGE_PX = 4000;
+const DIMENSION_MESSAGE = `That image is too large. Please use one no bigger than ${MAX_EDGE_PX} × ${MAX_EDGE_PX} pixels.`;
 const CLOUDINARY_PREFIX = 'https://res.cloudinary.com/';
 const TYPE_MESSAGE = 'Please upload a JPG, PNG, or WebP image.';
 
@@ -57,7 +60,11 @@ function createImageField({ kind, field, saveFailedMessage }) {
     if (!buffer.length || buffer.length > MAX_BYTES || !TYPES[match[1]].magic(buffer)) {
       throw fail(saveFailedMessage);
     }
-    return { buffer, ext: TYPES[match[1]].ext };
+    const { ext } = TYPES[match[1]];
+    const size = readImageSize(buffer, ext);
+    if (!size) throw fail(saveFailedMessage);
+    if (size.width > MAX_EDGE_PX || size.height > MAX_EDGE_PX) throw fail(DIMENSION_MESSAGE);
+    return { buffer, ext };
   }
 
   async function store(businessId, dataUrl) {
@@ -78,12 +85,25 @@ function createImageField({ kind, field, saveFailedMessage }) {
     });
   }
 
+  // With `changes`, old files are removed only after the record saves (see createImageChanges).
+  function discard(businessId, value, changes) {
+    if (changes) {
+      changes.afterSave(() => remove(businessId, value));
+      return undefined;
+    }
+    return remove(businessId, value);
+  }
+
+  function trackUpload(businessId, value, changes) {
+    if (changes) changes.onFailure(() => remove(businessId, value));
+  }
+
   // Accepts an owned stored value, a new data URL, empty string to clear, or undefined to keep.
-  async function saveSingle(businessId, next, previous = '') {
+  async function saveSingle(businessId, next, previous = '', changes = null) {
     if (next === undefined) return previous || '';
 
     if (next === null || next === '') {
-      if (previous) await remove(businessId, previous);
+      if (previous) await discard(businessId, previous, changes);
       return '';
     }
 
@@ -92,11 +112,51 @@ function createImageField({ kind, field, saveFailedMessage }) {
     if (!next.startsWith('data:image/')) throw fail(TYPE_MESSAGE);
 
     const saved = await store(businessId, next);
-    if (previous && previous !== saved) await remove(businessId, previous);
+    trackUpload(businessId, saved, changes);
+    if (previous && previous !== saved) await discard(businessId, previous, changes);
     return saved;
   }
 
-  return { fail, isOwned, store, remove, saveSingle };
+  return { fail, isOwned, store, remove, discard, trackUpload, saveSingle };
 }
 
-module.exports = { createImageField, isAcceptedImageValue, MAX_BYTES, TYPE_MESSAGE };
+// Collects file work for one record save: replaced files are deleted only after the save
+// succeeds, and files uploaded for a save that fails are deleted so nothing is orphaned.
+// Cleanup is best effort; a failure is logged and never changes the saved record.
+function createImageChanges() {
+  const afterSaveTasks = [];
+  const failureTasks = [];
+
+  async function run(tasks) {
+    const pending = tasks.splice(0);
+    await Promise.all(pending.map(async (task) => {
+      try {
+        await task();
+      } catch (err) {
+        console.warn(`[images] Cleanup failed: ${err?.message || err}`);
+      }
+    }));
+  }
+
+  return {
+    afterSave(task) { afterSaveTasks.push(task); },
+    onFailure(task) { failureTasks.push(task); },
+    async commit() {
+      failureTasks.length = 0;
+      await run(afterSaveTasks);
+    },
+    async rollback() {
+      afterSaveTasks.length = 0;
+      await run(failureTasks);
+    },
+  };
+}
+
+module.exports = {
+  createImageField,
+  createImageChanges,
+  isAcceptedImageValue,
+  MAX_BYTES,
+  MAX_EDGE_PX,
+  TYPE_MESSAGE,
+};

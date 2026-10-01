@@ -8,7 +8,9 @@ const KINDS = ['products', 'logos', 'covers', 'payment-qr'];
 const TEST_CLOUD_NAME = 'cove-test';
 
 // Test-only record of what the memory driver uploaded and deleted.
-const memory = { uploads: [], deleted: [] };
+// failPrefixCleanup simulates a Cloudinary outage during shop cleanup.
+const memory = { uploads: [], deleted: [], deletedPrefixes: [], failPrefixCleanup: false };
+const MAX_PREFIX_BATCHES = 50;
 
 let sdkConfigured = false;
 
@@ -122,6 +124,42 @@ async function deleteImage(publicId) {
   }
 }
 
+// Deletes every image Cove stored for one shop (cove/<kind>/<businessId>/...).
+// Never throws: re-running is safe, and a failure is logged and reported, not raised.
+async function deleteBusinessImages(businessId) {
+  const id = String(businessId || '');
+  if (!/^[a-f0-9]{24}$/.test(id)) {
+    console.warn('[images] Shop image cleanup skipped: invalid business id.');
+    return { ok: false, failed: [...KINDS] };
+  }
+
+  const failed = [];
+  for (const kind of KINDS) {
+    const prefix = `${ROOT_FOLDER}/${kind}/${id}/`;
+    try {
+      if (usingMemory()) {
+        if (memory.failPrefixCleanup) throw new Error('simulated Cloudinary failure');
+        memory.deletedPrefixes.push(prefix);
+        continue;
+      }
+      if (!isConfigured()) throw new Error('Cloudinary is not configured');
+      const client = sdk();
+      for (let batch = 0; batch < MAX_PREFIX_BATCHES; batch += 1) {
+        const result = await client.api.delete_resources_by_prefix(prefix, {
+          resource_type: 'image',
+          type: 'upload',
+          invalidate: true,
+        });
+        if (!result?.partial) break;
+      }
+    } catch (err) {
+      failed.push(kind);
+      console.warn(`[images] Could not delete ${prefix} from Cloudinary: ${err?.message || err}`);
+    }
+  }
+  return { ok: failed.length === 0, failed };
+}
+
 module.exports = {
   KINDS,
   isConfigured,
@@ -129,5 +167,6 @@ module.exports = {
   ownedPublicId,
   uploadImage,
   deleteImage,
+  deleteBusinessImages,
   memory,
 };

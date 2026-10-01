@@ -8,6 +8,7 @@ import { CATEGORIES } from '../utils/categories';
 import { CURRENCIES } from '../utils/currencies';
 import { formatEyebrowDate, formatPrice, initials } from '../utils/display';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
+import { prepareLogoImage, prepareQrImage } from '../utils/images';
 import { mediaUrl } from '../utils/media';
 import { copyText, storefrontPath, storefrontUrl } from '../utils/storefront';
 import { buildUpiPayUri, isValidUpiId, upiQrDataUrl } from '../utils/upi';
@@ -199,46 +200,30 @@ export default function SettingsPage() {
     }
   }
 
-  function onLogoSelected(event) {
+  async function onLogoSelected(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     setLogoError('');
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setLogoError('Please upload a JPG, PNG, or WebP image.');
-      return;
+    try {
+      const logo = await prepareLogoImage(file);
+      setForm((current) => ({ ...current, logo }));
+    } catch (err) {
+      setLogoError(err.message);
     }
-    if (file.size > 450 * 1024) {
-      setLogoError('Please use an image under 450KB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((current) => ({ ...current, logo: String(reader.result || '') }));
-    };
-    reader.onerror = () => setLogoError('That image could not be read.');
-    reader.readAsDataURL(file);
   }
 
-  function onQrSelected(event) {
+  async function onQrSelected(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     setQrError('');
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setQrError('Please upload a JPG, PNG, or WebP image.');
-      return;
+    try {
+      const paymentQrImage = await prepareQrImage(file);
+      setForm((current) => ({ ...current, paymentQrImage }));
+    } catch (err) {
+      setQrError(err.message);
     }
-    if (file.size > 450 * 1024) {
-      setQrError('Please use an image under 450KB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((current) => ({ ...current, paymentQrImage: String(reader.result || '') }));
-    };
-    reader.onerror = () => setQrError('That image could not be read.');
-    reader.readAsDataURL(file);
   }
 
   function clientErrors() {
@@ -399,7 +384,7 @@ export default function SettingsPage() {
                 )}
                 <div>
                   <strong>Business logo</strong>
-                  <p className="muted">JPG, PNG, or WebP · under 450KB</p>
+                  <p className="muted">JPG, PNG, or WebP · up to 10 MB, resized automatically</p>
                   {logoError ? <span className="field-error">{logoError}</span> : null}
                   {errors.logo ? <span className="field-error">{errors.logo}</span> : null}
                 </div>
@@ -615,8 +600,8 @@ export default function SettingsPage() {
                       <strong>{form.currency === 'INR' ? 'Uploaded QR (fallback)' : 'QR image'}</strong>
                       <p className="muted">
                         {form.currency === 'INR'
-                          ? 'Optional if you added a UPI ID. Shown when a customer cannot open UPI apps. JPG, PNG, or WebP · under 450KB'
-                          : 'JPG, PNG, or WebP · under 450KB'}
+                          ? 'Optional if you added a UPI ID. Shown when a customer cannot open UPI apps. JPG, PNG, or WebP · up to 10 MB, resized automatically'
+                          : 'JPG, PNG, or WebP · up to 10 MB, resized automatically'}
                       </p>
                       {qrError ? <span className="field-error">{qrError}</span> : null}
                       {errors.paymentQrImage ? <span className="field-error">{errors.paymentQrImage}</span> : null}

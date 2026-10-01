@@ -1,6 +1,7 @@
 const Product = require('../models/Product');
 const ApiError = require('../utils/ApiError');
 const { saveImages, removeOwnedFile } = require('../utils/productImages');
+const { createImageChanges } = require('../utils/imageUpload');
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -98,11 +99,18 @@ async function update(businessId, id, input) {
   if (input.stockQuantity !== undefined) product.stockQuantity = Number(input.stockQuantity);
   if (input.category !== undefined) product.category = input.category || '';
   if (input.status !== undefined) product.status = input.status;
+  const imageChanges = createImageChanges();
   if (input.images !== undefined) {
-    product.images = await saveImages(businessId, input.images, product.images);
+    product.images = await saveImages(businessId, input.images, product.images, imageChanges);
   }
 
-  await product.save();
+  try {
+    await product.save();
+  } catch (err) {
+    await imageChanges.rollback();
+    throw err;
+  }
+  await imageChanges.commit();
   return product;
 }
 
