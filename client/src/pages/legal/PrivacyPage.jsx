@@ -1,4 +1,4 @@
-import LegalLayout, { ContactBlock, L, SupportEmail } from './LegalLayout';
+import LegalLayout, { ContactBlock, GrievanceBlock, L, SupportEmail } from './LegalLayout';
 
 export default function PrivacyPage() {
   return (
@@ -10,9 +10,10 @@ export default function PrivacyPage() {
       <section>
         <h2>1. Who we are</h2>
         <p>
-          Cove is operated by <L k="businessName" /> (&ldquo;Cove&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy
-          explains what information we collect when you run a store on Cove (a &ldquo;seller&rdquo;) or shop from a
-          store hosted on Cove (a &ldquo;customer&rdquo;), and how we use it.
+          Cove is operated by <L k="LEGAL_BUSINESS_NAME" /> (&ldquo;Cove&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). Cove
+          provides software and online storefront infrastructure that allows independent sellers to operate stores and
+          receive customer orders. This policy explains what information we process when you run a store on Cove (a
+          &ldquo;seller&rdquo;) or shop from a store hosted on Cove (a &ldquo;customer&rdquo;), and how we use it.
         </p>
       </section>
 
@@ -21,22 +22,32 @@ export default function PrivacyPage() {
         <h3>From sellers</h3>
         <ul>
           <li>Account details: your name, email address and password. Passwords are stored only as a secure hash.</li>
-          <li>Business details: business name, category, and optionally phone number and city.</li>
+          <li>
+            Business details: business name, category, description, logo, and, if you provide them, phone number,
+            business email and city. These business details may be displayed on your public storefront so customers can
+            identify and contact your shop.
+          </li>
           <li>
             Store content: products, photos, prices, stock, store settings, and the payment details you choose to show
             customers, such as a UPI QR code, payment link or instructions.
           </li>
           <li>
-            Subscription details: your plan, trial and subscription status, and the reference numbers Razorpay gives us.
-            Your card, UPI or bank details are entered with Razorpay and are not stored by Cove.
+            Orders and customers: the orders your store receives and the customer details that come with them, as
+            described below.
           </li>
+          <li>
+            Subscription and billing details: your plan, trial and subscription status, and the reference numbers
+            Razorpay gives us. Your card, UPI or bank details are entered with Razorpay and are not stored by Cove.
+          </li>
+          <li>Usage and analytics information about how you and your customers use your store and dashboard.</li>
         </ul>
         <h3>From customers</h3>
         <ul>
           <li>
-            Order details you enter at checkout: your name, phone number, email address, delivery address if you
-            choose delivery, order notes, the items you order, and any payment reference you submit.
+            Order details you enter at checkout: your name, phone number, email address if you provide one, delivery
+            address if you choose delivery, order notes, the items you order, and any payment reference you submit.
           </li>
+          <li>Order status and payment status information for your orders, as updated by the seller.</li>
           <li>
             Product requests: the name, contact details and request you enter when you ask a store for a product.
           </li>
@@ -78,8 +89,12 @@ export default function PrivacyPage() {
         <ul>
           <li>to provide Cove, run storefronts, and show sellers the orders, customers and requests for their store;</li>
           <li>
-            to send service emails, such as password resets, order and payment notifications, order confirmations to
-            customers, and weekly store reports;
+            to send sellers service emails, such as password resets, order and payment notifications, and weekly store
+            reports;
+          </li>
+          <li>
+            if a customer gives an email address at checkout, to send transactional emails about that order, such as
+            confirmation that the order was received, payment confirmation or rejection, and order status updates;
           </li>
           <li>to manage trials, subscriptions and billing;</li>
           <li>to show sellers analytics about their own store;</li>
@@ -93,15 +108,16 @@ export default function PrivacyPage() {
         <h2>5. Customer information and sellers</h2>
         <p>
           When you order from or send a request to a store, your details are shared with that store&apos;s seller so they
-          can fulfil your order and contact you. Each seller decides how they use and keep their customers&apos;
-          information, and Cove stores and processes it on the seller&apos;s behalf. For questions about an order, or to
-          ask a seller to update or delete your details, please contact the seller directly. You can also contact us.
+          can process and fulfil your order and contact you. Each seller decides how they use and keep their
+          customers&apos; information, and Cove stores and processes it on the seller&apos;s behalf. For questions about
+          an order, or to ask a seller to update or delete your details, please contact the seller directly. You can
+          also contact us.
         </p>
       </section>
 
       <section>
         <h2>6. Service providers</h2>
-        <p>We use trusted providers to run Cove. They receive only the information they need to do their job:</p>
+        <p>We use these providers to run Cove. They receive only the information they need to do their job:</p>
         <ul>
           <li>MongoDB Atlas: database hosting</li>
           <li>Render and Vercel: application and website hosting</li>
@@ -119,9 +135,10 @@ export default function PrivacyPage() {
       <section>
         <h2>7. How long we keep information</h2>
         <p>
-          We keep seller account and store information while the account is open, including while a store is paused. If
-          you ask us to close your account, we will delete or anonymise your information, except records we need to keep
-          to meet legal, tax or accounting requirements or to resolve disputes.
+          We retain information for as long as reasonably necessary for the purposes described in this Privacy Policy,
+          to operate and secure the service, comply with applicable legal obligations, resolve disputes, and enforce
+          agreements. Specific retention periods may vary by data type. Seller store data is kept while a store is
+          paused.
         </p>
       </section>
 
@@ -134,7 +151,7 @@ export default function PrivacyPage() {
       </section>
 
       <section>
-        <h2>9. Your choices</h2>
+        <h2>9. Your choices and requests</h2>
         <ul>
           <li>Sellers can view and update their account and business details in Settings at any time.</li>
           <li>Sellers can turn individual email notifications on or off in Settings.</li>
@@ -144,6 +161,14 @@ export default function PrivacyPage() {
           </li>
           <li>You can stop store-usage counting by turning on Do Not Track or Global Privacy Control in your browser.</li>
         </ul>
+        <p>
+          Where you request deletion of your account or information, Cove will process the request in accordance with
+          applicable law and its legitimate operational, security, dispute-resolution and legal-retention requirements.
+        </p>
+        <p>
+          Where applicable law provides individuals with rights concerning their personal data, Cove will handle valid
+          requests in accordance with applicable law.
+        </p>
       </section>
 
       <section>
@@ -160,9 +185,14 @@ export default function PrivacyPage() {
       </section>
 
       <section>
-        <h2>12. Contact</h2>
+        <h2>12. Contact and grievances</h2>
         <p>Questions or requests about your information can be sent to:</p>
         <ContactBlock />
+        <p>
+          Complaints and grievances relating to Cove may be submitted using the contact details below. Cove will
+          acknowledge and handle complaints within the timelines applicable to the request and under applicable law.
+        </p>
+        <GrievanceBlock />
       </section>
     </LegalLayout>
   );

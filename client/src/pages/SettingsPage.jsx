@@ -438,6 +438,10 @@ export default function SettingsPage() {
                   City
                   <input name="city" value={form.city} onChange={update} maxLength={60} />
                 </label>
+                <p className="wide muted">
+                  These business details may be displayed on your public storefront so customers can identify and contact
+                  your shop.
+                </p>
               </div>
             </>
           ) : null}

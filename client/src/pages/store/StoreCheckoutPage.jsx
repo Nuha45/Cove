@@ -388,6 +388,13 @@ export default function StoreCheckoutPage() {
           <button className="primary" type="submit" disabled={submitting}>
             {submitting ? 'Placing order...' : 'Place order'}
           </button>
+          <p className="muted store-checkout-legal">
+            Your order details will be shared with {business?.name || 'this shop'} so they can process and fulfil your
+            order. For questions about this order, including returns or refunds, please contact the shop using the
+            details shown on its storefront. By placing your order, you agree to Cove&apos;s{' '}
+            <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a> and acknowledge the{' '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+          </p>
         </aside>
       </form>
     </div>

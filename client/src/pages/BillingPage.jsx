@@ -367,10 +367,10 @@ export default function BillingPage() {
           </div>
 
           <p className="muted billing-footnote">
-            Nothing is charged when the free trial ends unless you choose a plan. Upgrading an active Cove Basic subscription
-            applies immediately through Razorpay. Moving from Cove Plus to Cove Basic takes effect at the end of the current
-            billing cycle. Cancelling stops the next renewal; you keep your plan until the paid period ends. Customer
-            payments to your shop are never part of this page. See the{' '}
+            Nothing is charged when the free trial ends unless you choose a plan. An upgrade to Cove Plus takes effect
+            according to the applicable Razorpay subscription and billing flow. Moving from Cove Plus to Cove Basic takes
+            effect at the end of the current billing cycle. Cancelling stops the next renewal; you keep your plan until
+            the paid period ends. Customer payments to your shop are never part of this page. See the{' '}
             <Link to="/refund-policy">Refund &amp; Cancellation Policy</Link> and{' '}
             <Link to="/terms">Terms of Service</Link>.
           </p>

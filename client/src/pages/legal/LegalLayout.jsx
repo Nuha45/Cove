@@ -12,17 +12,36 @@ export function L({ k }) {
   return value;
 }
 
+function MailLink({ k }) {
+  if (isPlaceholder(LEGAL[k])) return <L k={k} />;
+  return <a href={`mailto:${LEGAL[k]}`}>{LEGAL[k]}</a>;
+}
+
 export function SupportEmail() {
-  if (isPlaceholder(LEGAL.supportEmail)) return <L k="supportEmail" />;
-  return <a href={`mailto:${LEGAL.supportEmail}`}>{LEGAL.supportEmail}</a>;
+  return <MailLink k="SUPPORT_EMAIL" />;
 }
 
 export function ContactBlock() {
   return (
     <address className="legal-contact">
-      <strong><L k="businessName" /></strong>
-      <span><L k="address" /></span>
+      <strong><L k="LEGAL_BUSINESS_NAME" /></strong>
+      <span><L k="REGISTERED_ADDRESS" /></span>
       <span>Email: <SupportEmail /></span>
+      <span>Phone: <L k="SUPPORT_PHONE" /></span>
+    </address>
+  );
+}
+
+export function GrievanceBlock() {
+  return (
+    <address className="legal-contact">
+      <strong>Grievance Officer</strong>
+      <span>Name: <L k="GRIEVANCE_OFFICER_NAME" /></span>
+      <span>Designation: <L k="GRIEVANCE_OFFICER_DESIGNATION" /></span>
+      <span>Email: <MailLink k="GRIEVANCE_OFFICER_EMAIL" /></span>
+      <span>Phone: <L k="SUPPORT_PHONE" /></span>
+      <span>Address: <L k="REGISTERED_ADDRESS" /></span>
+      <span>Response timeline: <L k="GRIEVANCE_RESPONSE_TIMELINE" /></span>
     </address>
   );
 }
@@ -50,7 +69,7 @@ export default function LegalLayout({ path, title, description, children }) {
         <article className="legal-article">
           <header className="legal-head">
             <h1>{title}</h1>
-            <p>Effective date: <L k="effectiveDate" /></p>
+            <p>Effective date: <L k="EFFECTIVE_DATE" /></p>
           </header>
           {children}
         </article>

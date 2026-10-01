@@ -5,6 +5,20 @@ import { StoreAnnouncement, StoreBrandContent } from '../../components/storefron
 import { CartProvider, useCart } from '../../context/CartContext';
 import { appearanceFromBusiness, storeThemeProps } from '../../utils/storefrontAppearance';
 
+function SellerContact({ business }) {
+  if (!business?.name) return null;
+  const phone = business.phone?.trim();
+  const email = business.email?.trim();
+  const city = business.city?.trim();
+  return (
+    <address className="store-seller-contact">
+      <span>Sold by <strong>{business.name}</strong>{city ? `, ${city}` : ''}</span>
+      {phone ? <a href={`tel:${phone.replace(/[^\d+]/g, '')}`}>{phone}</a> : null}
+      {email ? <a href={`mailto:${email}`}>{email}</a> : null}
+    </address>
+  );
+}
+
 function StoreChrome({ business, initialCatalog }) {
   const { slug } = useParams();
   const { count } = useCart();
@@ -31,10 +45,15 @@ function StoreChrome({ business, initialCatalog }) {
         <Outlet context={{ business, initialCatalog }} />
       </main>
       <footer className="store-foot">
-        <CoveLogo size={22} />
-        <span>Powered by Cove</span>
-        <span aria-hidden="true">·</span>
-        <Link to="/privacy">Privacy</Link>
+        <SellerContact business={business} />
+        <div className="store-foot-cove">
+          <CoveLogo size={22} />
+          <span>Powered by Cove</span>
+          <span aria-hidden="true">·</span>
+          <Link to="/terms">Terms</Link>
+          <span aria-hidden="true">·</span>
+          <Link to="/privacy">Privacy</Link>
+        </div>
       </footer>
     </div>
   );

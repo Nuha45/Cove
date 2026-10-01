@@ -3211,14 +3211,27 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 }
 .skip-link:focus { top: 12px; }
 .store-foot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
   padding: 20px;
   color: var(--muted);
   font-size: 12px;
+  text-align: center;
 }
+.store-foot-cove,
+.store-seller-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 12px;
+}
+.store-foot-cove { gap: 8px; }
+.store-seller-contact { font-style: normal; overflow-wrap: anywhere; }
+.store-seller-contact strong { color: var(--foreground); }
+.store-checkout-legal { margin: 0; font-size: 12px; }
+.store-checkout-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .store-foot a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .store-foot a:hover { color: var(--foreground); }
 .store-status {
