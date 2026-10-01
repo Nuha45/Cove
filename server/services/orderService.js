@@ -201,6 +201,7 @@ async function create(businessId, input) {
       // Public storefront checkouts may attach a hashed confirmation token. Seller orders omit it.
       if (input.confirmationTokenHash) {
         orderDoc.confirmationTokenHash = input.confirmationTokenHash;
+        if (input.confirmationTokenSealed) orderDoc.confirmationTokenSealed = input.confirmationTokenSealed;
       }
 
       const [created] = await Order.create([orderDoc], { session });
@@ -363,6 +364,7 @@ async function cancel(businessId, id, paymentStatus, actorUserId = null) {
   await ensureReady();
   const session = await mongoose.startSession();
   let previousStatus = null;
+  let previousPayment = null;
   try {
     const order = await session.withTransaction(async () => {
       const previous = await Order.findOneAndUpdate(
@@ -391,6 +393,7 @@ async function cancel(businessId, id, paymentStatus, actorUserId = null) {
       }
 
       previousStatus = previous.status;
+      previousPayment = previous.paymentStatus;
       await restoreStock(previous.items, businessId, session);
       // Cancelled orders do not count as revenue. Reverse the create-time stats once.
       await customerService.reverseOrder(
@@ -415,6 +418,9 @@ async function cancel(businessId, id, paymentStatus, actorUserId = null) {
         order,
         previousStatus,
       }).catch(() => {});
+      if (previousPayment && previousPayment !== order.paymentStatus) {
+        notifyEvents.notifyPaymentChanged({ businessId, order, previousPayment }).catch(() => {});
+      }
     });
     return order;
   } catch (err) {
@@ -467,8 +473,8 @@ async function update(businessId, id, input, actorUserId = null) {
           previousStatus,
         }).catch(() => {});
       }
-      if (hasPayment && previousPayment !== 'Paid' && order.paymentStatus === 'Paid') {
-        notifyEvents.notifyPaymentVerified({ businessId, order }).catch(() => {});
+      if (hasPayment && previousPayment && previousPayment !== order.paymentStatus) {
+        notifyEvents.notifyPaymentChanged({ businessId, order, previousPayment }).catch(() => {});
       }
     });
 

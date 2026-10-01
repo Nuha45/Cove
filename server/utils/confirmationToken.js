@@ -23,6 +23,32 @@ function hashConfirmationToken(token) {
   return crypto.createHash('sha256').update(String(token), 'utf8').digest('hex');
 }
 
+function sealKey() {
+  const { jwtSecret } = require('../config/env');
+  return crypto.createHash('sha256').update(`cove-confirmation-seal:${jwtSecret}`, 'utf8').digest();
+}
+
+// Encrypted copy of the raw token so later order emails can repeat the same tracking link.
+// Useless without the server secret; the hash stays the only lookup key.
+function sealConfirmationToken(token) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', sealKey(), iv);
+  const data = Buffer.concat([cipher.update(String(token), 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), data].map((part) => part.toString('base64url')).join('.');
+}
+
+function openConfirmationToken(sealed) {
+  try {
+    const [iv, tag, data] = String(sealed || '').split('.').map((part) => Buffer.from(part, 'base64url'));
+    if (!iv?.length || !tag?.length || !data?.length) return '';
+    const decipher = crypto.createDecipheriv('aes-256-gcm', sealKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
 function isConfirmationTokenShape(token) {
   if (typeof token !== 'string') return false;
   // 32 bytes → 43 base64url characters. Allow a small range for future length changes.
@@ -34,5 +60,7 @@ module.exports = {
   createConfirmationToken,
   confirmationTokenForCheckout,
   hashConfirmationToken,
+  sealConfirmationToken,
+  openConfirmationToken,
   isConfirmationTokenShape,
 };

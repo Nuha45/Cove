@@ -217,6 +217,12 @@ const orderSchema = new mongoose.Schema(
       select: false,
       default: undefined,
     },
+    // AES-GCM sealed raw token (see utils/confirmationToken) for tracking links in later emails.
+    confirmationTokenSealed: {
+      type: String,
+      select: false,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

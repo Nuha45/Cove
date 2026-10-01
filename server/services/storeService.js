@@ -7,6 +7,7 @@ const {
   confirmationTokenForCheckout,
   createConfirmationToken,
   hashConfirmationToken,
+  sealConfirmationToken,
   isConfirmationTokenShape,
 } = require('../utils/confirmationToken');
 const {
@@ -255,6 +256,7 @@ async function createOrder(slug, input) {
       notes: input.notes,
       paymentMethod,
       confirmationTokenHash,
+      confirmationTokenSealed: sealConfirmationToken(confirmationToken),
     });
   } catch (err) {
     // Two identical submissions raced; the other one created the order.

@@ -303,17 +303,78 @@ async function sendSellerNewOrder({ to, businessName, order, orderUrl, currency 
   return sendEmail({ to, subject, html, text, meta: { kind: 'new_order', orderId: order.id } });
 }
 
-async function sendCustomerOrderStatus({ to, businessName, order }) {
-  const subject = `Order update · ${order.orderNumber}`;
-  const text = `${businessName} updated order ${order.orderNumber} to ${order.status}.`;
-  const html = wrapHtml({
+const PAYMENT_STATUS_LABELS = {
+  Pending: 'Pending',
+  'Payment Pending': 'Pending',
+  'Payment Submitted': 'Submitted',
+  Paid: 'Paid',
+  'Payment Rejected': 'Rejected',
+};
+
+function paymentStatusLabel(status) {
+  return PAYMENT_STATUS_LABELS[status] || status || '';
+}
+
+function trackingText(trackingUrl) {
+  return trackingUrl ? `Track your order: ${trackingUrl}` : '';
+}
+
+function trackingHtml(trackingUrl) {
+  return trackingUrl
+    ? `<p style="margin:20px 0 0;"><a href="${escapeHtml(trackingUrl)}">Track your order</a></p>`
+    : '';
+}
+
+const ORDER_STATUS_COPY = {
+  Confirmed: {
+    title: 'Order confirmed',
+    line: (shop) => `${shop} has confirmed your order.`,
+  },
+  Preparing: {
+    title: 'Order being prepared',
+    line: (shop) => `${shop} has started preparing your order.`,
+  },
+  Ready: {
+    title: 'Order ready',
+    line: (shop) => `${shop} has marked your order as ready.`,
+  },
+  Completed: {
+    title: 'Order completed',
+    line: (shop) => `${shop} has marked your order as completed. Thank you for shopping with them.`,
+  },
+  Cancelled: {
+    title: 'Order cancelled',
+    line: (shop) => `${shop} has cancelled your order.`,
+    extra: (shop) => `If you already paid, contact ${shop} about a refund.`,
+  },
+};
+
+async function sendCustomerOrderStatus({ to, businessName, order, trackingUrl }) {
+  const copy = ORDER_STATUS_COPY[order.status] || {
     title: 'Order update',
+    line: (shop) => `${shop} updated your order to ${order.status}.`,
+  };
+  const subject = `${copy.title} · ${order.orderNumber}`;
+  const extra = copy.extra ? copy.extra(businessName) : '';
+  const text = [
+    copy.line(businessName),
+    `Order: ${order.orderNumber}`,
+    `Status: ${order.status}`,
+    order.deliveryMethod ? `Delivery method: ${order.deliveryMethod}` : '',
+    extra,
+    trackingText(trackingUrl),
+  ].filter(Boolean).join('\n');
+  const html = wrapHtml({
+    title: copy.title,
     bodyHtml: `
-      <p>${escapeHtml(businessName)} updated your order <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
-      <p>Status: <strong>${escapeHtml(order.status)}</strong></p>
+      <p style="line-height:1.5;">${escapeHtml(copy.line(businessName))}</p>
+      <p style="margin:0 0 6px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: <strong>${escapeHtml(order.status)}</strong></p>
+      ${order.deliveryMethod ? `<p style="margin:0 0 6px;">Delivery method: ${escapeHtml(order.deliveryMethod)}</p>` : ''}
+      ${extra ? `<p style="line-height:1.5;">${escapeHtml(extra)}</p>` : ''}
+      ${trackingHtml(trackingUrl)}
     `,
   });
-  return sendEmail({ to, subject, html, text, meta: { kind: 'order_status', orderId: order.id } });
+  return sendEmail({ to, subject, html, text, meta: { kind: 'order_status', orderId: order.id, status: order.status } });
 }
 
 async function sendSellerPaymentSubmitted({ to, businessName, order, orderUrl }) {
@@ -336,18 +397,54 @@ async function sendSellerPaymentSubmitted({ to, businessName, order, orderUrl })
   return sendEmail({ to, subject, html, text, meta: { kind: 'payment_submitted', orderId: order.id } });
 }
 
-async function sendCustomerPaymentVerified({ to, businessName, order, currency }) {
+async function sendCustomerPaymentVerified({ to, businessName, order, currency, trackingUrl }) {
   const subject = `Payment confirmed · ${order.orderNumber}`;
   const total = formatMoney(order.total, currency);
-  const text = `${businessName} confirmed your payment of ${total} for order ${order.orderNumber}.`;
+  const text = [
+    `${businessName} confirmed your payment of ${total} for order ${order.orderNumber}.`,
+    `Payment status: ${paymentStatusLabel(order.paymentStatus)}`,
+    `Order status: ${order.status}`,
+    trackingText(trackingUrl),
+  ].filter(Boolean).join('\n');
   const html = wrapHtml({
     title: 'Payment confirmed',
     bodyHtml: `
-      <p>${escapeHtml(businessName)} confirmed payment for order <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
-      <p>Total: <strong>${escapeHtml(total)}</strong></p>
+      <p style="line-height:1.5;">${escapeHtml(businessName)} confirmed payment for order <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
+      <p style="margin:0 0 6px;">Amount paid: <strong>${escapeHtml(total)}</strong></p>
+      <p style="margin:0 0 6px;">Payment status: <strong>${escapeHtml(paymentStatusLabel(order.paymentStatus))}</strong> · Order status: ${escapeHtml(order.status)}</p>
+      ${trackingHtml(trackingUrl)}
     `,
   });
   return sendEmail({ to, subject, html, text, meta: { kind: 'payment_verified', orderId: order.id } });
+}
+
+async function sendCustomerPaymentRejected({ to, businessName, order, currency, trackingUrl }) {
+  const subject = `Payment not confirmed · ${order.orderNumber}`;
+  const total = formatMoney(order.total, currency);
+  const note = String(order.paymentRejectionNote || '').trim();
+  const nextStep = `If you have already paid, contact ${businessName} with your payment details so they can check it.`;
+  const text = [
+    `${businessName} could not confirm your payment for order ${order.orderNumber}.`,
+    `Order total: ${total}`,
+    order.paymentReference ? `Payment reference you shared: ${order.paymentReference}` : '',
+    `Payment status: ${paymentStatusLabel(order.paymentStatus)}`,
+    note ? `Note from ${businessName}: ${note}` : '',
+    nextStep,
+    trackingText(trackingUrl),
+  ].filter(Boolean).join('\n');
+  const html = wrapHtml({
+    title: 'Payment not confirmed',
+    bodyHtml: `
+      <p style="line-height:1.5;">${escapeHtml(businessName)} could not confirm your payment for order <strong>${escapeHtml(order.orderNumber)}</strong>.</p>
+      <p style="margin:0 0 6px;">Order total: <strong>${escapeHtml(total)}</strong></p>
+      ${order.paymentReference ? `<p style="margin:0 0 6px;">Payment reference you shared: ${escapeHtml(order.paymentReference)}</p>` : ''}
+      <p style="margin:0 0 6px;">Payment status: <strong>${escapeHtml(paymentStatusLabel(order.paymentStatus))}</strong></p>
+      ${note ? `<p style="line-height:1.5;">Note from ${escapeHtml(businessName)}: ${escapeHtml(note)}</p>` : ''}
+      <p style="line-height:1.5;">${escapeHtml(nextStep)}</p>
+      ${trackingHtml(trackingUrl)}
+    `,
+  });
+  return sendEmail({ to, subject, html, text, meta: { kind: 'payment_rejected', orderId: order.id } });
 }
 
 async function sendSellerCustomerWant({ to, businessName, wantPreview, wantsUrl }) {
@@ -413,6 +510,7 @@ async function sendCustomerOrderConfirmation({ to, businessName, order, currency
     ...order.items.map((item) => `${item.quantity} × ${item.name}`),
     `Total: ${total}`,
     `Status: ${order.status}`,
+    order.paymentStatus ? `Payment status: ${paymentStatusLabel(order.paymentStatus)}` : '',
     confirmationUrl ? `View your order: ${confirmationUrl}` : '',
     invoiceUrl ? `Invoice (PDF): ${invoiceUrl}` : '',
   ].filter(Boolean).join('\n');
@@ -420,7 +518,7 @@ async function sendCustomerOrderConfirmation({ to, businessName, order, currency
     title: 'Order received',
     bodyHtml: `
       <p style="line-height:1.5;">Thanks for your order with <strong>${escapeHtml(businessName)}</strong>.</p>
-      <p style="margin:0 0 12px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: ${escapeHtml(order.status)}</p>
+      <p style="margin:0 0 12px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: ${escapeHtml(order.status)}${order.paymentStatus ? ` · Payment: ${escapeHtml(paymentStatusLabel(order.paymentStatus))}` : ''}</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
         ${order.items.map((item) => `
           <tr>
@@ -510,6 +608,7 @@ module.exports = {
   sendCustomerOrderStatus,
   sendSellerPaymentSubmitted,
   sendCustomerPaymentVerified,
+  sendCustomerPaymentRejected,
   sendSellerCustomerWant,
   sendSellerLowStock,
   sendCustomerOrderConfirmation,

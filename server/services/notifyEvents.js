@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const Business = require('../models/Business');
+const Order = require('../models/Order');
 const EmailDelivery = require('../models/EmailDelivery');
+const { hashConfirmationToken, openConfirmationToken } = require('../utils/confirmationToken');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const env = require('../config/env');
@@ -137,39 +139,87 @@ async function notifyPaymentSubmitted({ businessId, order }) {
   }
 }
 
-async function notifyPaymentVerified({ businessId, order }) {
+// Same guest link the checkout returned; empty for seller-created or older orders.
+async function buyerTrackingUrl(business, publicOrder, confirmationToken) {
+  let token = confirmationToken;
+  if (!token) {
+    const row = await Order.findOne({ _id: publicOrder.id, businessId: business._id })
+      .select('+confirmationTokenHash +confirmationTokenSealed')
+      .lean();
+    if (!row?.confirmationTokenHash || !row.confirmationTokenSealed) return '';
+    const opened = openConfirmationToken(row.confirmationTokenSealed);
+    if (!opened || hashConfirmationToken(opened) !== row.confirmationTokenHash) return '';
+    token = opened;
+  }
+  return `${appBase()}/store/${business.slug}/order/${encodeURIComponent(publicOrder.orderNumber)}?c=${encodeURIComponent(token)}`;
+}
+
+const BUYER_PAYMENT_EMAILS = {
+  Paid: { kind: 'buyer_payment_paid', send: (args) => emailService.sendCustomerPaymentVerified(args) },
+  'Payment Rejected': { kind: 'buyer_payment_rejected', send: (args) => emailService.sendCustomerPaymentRejected(args) },
+};
+
+const BUYER_STATUS_EMAILS = ['Confirmed', 'Preparing', 'Ready', 'Completed', 'Cancelled'];
+
+// Payment can move Paid → Pending → Paid, so the key includes the payment event count:
+// each real transition gets its own key, while replays of the same transition reuse it.
+async function notifyPaymentChanged({ businessId, order, previousPayment }) {
   try {
+    const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
+    if (!previousPayment || previousPayment === publicOrder.paymentStatus) return;
+    const config = BUYER_PAYMENT_EMAILS[publicOrder.paymentStatus];
+    if (!config) return;
+    const email = publicOrder.customer?.email;
+    if (!email) return;
     const business = await getBusiness(businessId);
     if (!business) return;
-    const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
-    const email = publicOrder.customer?.email || order.customer?.email;
-    if (!email) return;
 
-    await emailService.sendCustomerPaymentVerified({
-      to: email,
-      businessName: business.name,
-      order: publicOrder,
-      currency: business.currency || 'INR',
-    });
+    const eventCount = (publicOrder.paymentEvents || []).length;
+    const trackingUrl = await buyerTrackingUrl(business, publicOrder);
+    await sendOnce(
+      {
+        businessId,
+        dedupeKey: `BUYER_PAYMENT:${publicOrder.id}:${eventCount}:${publicOrder.paymentStatus}`,
+        kind: config.kind,
+      },
+      () => config.send({
+        to: email,
+        businessName: business.name,
+        order: publicOrder,
+        currency: business.currency || 'INR',
+        trackingUrl,
+      })
+    );
   } catch (err) {
-    console.error('[notify:payment_verified]', err.message || err);
+    console.error('[notify:payment_changed]', err.message || err);
   }
 }
 
+// Order statuses only move forward, so one email per order and status is enough.
 async function notifyOrderStatusChanged({ businessId, order, previousStatus }) {
   try {
-    if (!previousStatus || previousStatus === order.status) return;
+    const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
+    if (!previousStatus || previousStatus === publicOrder.status) return;
+    if (!BUYER_STATUS_EMAILS.includes(publicOrder.status)) return;
+    const email = publicOrder.customer?.email;
+    if (!email) return;
     const business = await getBusiness(businessId);
     if (!business || !prefs(business).emailOrderUpdates) return;
-    const publicOrder = typeof order.toPublic === 'function' ? order.toPublic() : order;
-    const email = publicOrder.customer?.email || order.customer?.email;
-    if (!email) return;
 
-    await emailService.sendCustomerOrderStatus({
-      to: email,
-      businessName: business.name,
-      order: publicOrder,
-    });
+    const trackingUrl = await buyerTrackingUrl(business, publicOrder);
+    await sendOnce(
+      {
+        businessId,
+        dedupeKey: `BUYER_STATUS:${publicOrder.id}:${publicOrder.status}`,
+        kind: 'buyer_order_status',
+      },
+      () => emailService.sendCustomerOrderStatus({
+        to: email,
+        businessName: business.name,
+        order: publicOrder,
+        trackingUrl,
+      })
+    );
   } catch (err) {
     console.error('[notify:order_status]', err.message || err);
   }
@@ -261,10 +311,7 @@ async function notifyCustomerOrderConfirmation({ businessId, order, confirmation
     const business = await getBusiness(businessId);
     if (!business || !prefs(business).emailOrderConfirmation) return;
 
-    const tokenQuery = confirmationToken ? `?c=${encodeURIComponent(confirmationToken)}` : '';
-    const confirmationUrl = confirmationToken
-      ? `${appBase()}/store/${business.slug}/order/${encodeURIComponent(publicOrder.orderNumber)}${tokenQuery}`
-      : '';
+    const confirmationUrl = await buyerTrackingUrl(business, publicOrder, confirmationToken);
     const billingService = require('./billingService');
     const invoiceUrl = confirmationToken && (await billingService.hasAdvancedAccess(businessId))
       ? `${appBase()}/api/store/${business.slug}/orders/confirm/${encodeURIComponent(confirmationToken)}/invoice`
@@ -289,7 +336,7 @@ async function notifyCustomerOrderConfirmation({ businessId, order, confirmation
 module.exports = {
   notifyNewOrder,
   notifyPaymentSubmitted,
-  notifyPaymentVerified,
+  notifyPaymentChanged,
   notifyOrderStatusChanged,
   notifyCustomerWant,
   notifyLowStock,
