@@ -37,13 +37,12 @@ function getEmailConfigSummary() {
 }
 
 function logEmailConfig() {
-  if (env.nodeEnv === 'production') return;
   const summary = getEmailConfigSummary();
   console.info('[email-config]', {
     provider: summary.provider,
     apiKeyConfigured: summary.apiKeyConfigured,
-    fromConfigured: summary.fromConfigured,
-    appUrlConfigured: summary.appUrlConfigured,
+    from: summary.from || '(none)',
+    appUrl: summary.appUrl || '(none)',
   });
 }
 
@@ -150,6 +149,8 @@ async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
         from,
         to,
       });
+    } else {
+      console.error('[email]', { provider: 'resend', result: 'failed', status: response.status, error: detail, from });
     }
     throw new Error(`Resend email failed (${response.status}): ${detail}`);
   }
@@ -162,6 +163,8 @@ async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
       to,
       subject,
     });
+  } else {
+    console.info('[email]', { provider: 'resend', result: 'success', status: response.status, id: parsed?.id || undefined, from, subject });
   }
 
   return { ok: true, provider: 'resend', id: parsed?.id };
