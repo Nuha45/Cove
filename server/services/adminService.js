@@ -327,7 +327,8 @@ async function deleteBusiness(id, admin, { confirmSlug } = {}) {
   if (!business.archivedAt) {
     throw new ApiError(400, 'Archive this shop before deleting it permanently.');
   }
-  if (String(confirmSlug || '').trim().toLowerCase() !== business.slug) {
+  // Compared with the slug stored now, so a confirmation typed against stale admin data fails.
+  if (typeof confirmSlug !== 'string' || confirmSlug.trim() !== business.slug) {
     throw new ApiError(400, 'Type the shop link exactly to confirm deletion.', [
       { field: 'confirmSlug', message: `Type "${business.slug}" to confirm.` },
     ]);

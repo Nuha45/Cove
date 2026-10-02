@@ -13,6 +13,11 @@ const OrderCounter = require('../models/OrderCounter');
 const Customer = require('../models/Customer');
 const CustomerWant = require('../models/CustomerWant');
 const Notification = require('../models/Notification');
+const CustomerWantVote = require('../models/CustomerWantVote');
+const Invoice = require('../models/Invoice');
+const StoreEvent = require('../models/StoreEvent');
+const EmailDelivery = require('../models/EmailDelivery');
+const imageStorage = require('../services/imageStorage');
 const { signToken } = require('../services/tokenService');
 const { accountStatus } = require('../utils/adminStatus');
 
@@ -145,6 +150,10 @@ describe('admin', { timeout: 180000 }, () => {
       await Customer.deleteMany(filter);
       await OrderCounter.deleteMany(filter);
       await Notification.deleteMany(filter);
+      await CustomerWantVote.deleteMany(filter);
+      await Invoice.deleteMany(filter);
+      await StoreEvent.deleteMany(filter);
+      await EmailDelivery.deleteMany(filter);
       await Subscription.deleteMany(filter);
       await User.deleteMany(filter);
       await Business.deleteMany({ _id: { $in: createdBusinessIds } });
@@ -344,6 +353,134 @@ describe('admin', { timeout: 180000 }, () => {
 
     const sellerStill = await api('GET', `/api/admin/businesses/${seller.businessId}`, { token: admin.token });
     assert.equal(sellerStill.data.business.counts.products, 2);
+  });
+
+  describe('delete seller account', () => {
+    const SCOPED_MODELS = {
+      User, Subscription, Product, Order, Customer, CustomerWant, CustomerWantVote,
+      Invoice, Notification, StoreEvent, EmailDelivery, OrderCounter,
+    };
+
+    async function scopedCounts(businessId) {
+      const entries = await Promise.all(Object.entries(SCOPED_MODELS).map(async ([name, Model]) => (
+        [name, await Model.countDocuments({ businessId: new mongoose.Types.ObjectId(businessId) })]
+      )));
+      return Object.fromEntries(entries);
+    }
+
+    async function archivedSeller(label) {
+      const target = await registerTenant(label);
+      const product = await addProduct(target.token, `${label} Ring`);
+      await addOrder(target.token, product.id, '9876600031');
+      const wanted = await api('POST', `/api/store/${target.slug}/wants`, {
+        body: { name: 'Want Buyer', phone: '9876600032', request: 'Looking for gold hoops.', quantity: 1 },
+      });
+      assert.equal(wanted.status, 201, JSON.stringify(wanted.data));
+      // Records without a public creation path in this flow; raw inserts only need the tenant scope.
+      const businessId = new mongoose.Types.ObjectId(target.businessId);
+      await Promise.all([CustomerWantVote, Invoice, StoreEvent, EmailDelivery, Notification].map(
+        (Model) => Model.collection.insertOne({
+          businessId,
+          wantId: new mongoose.Types.ObjectId(),
+          voterKeyHash: `${label}-${stamp}`,
+          createdAt: new Date(),
+        })
+      ));
+      const archived = await api('POST', `/api/admin/businesses/${target.businessId}/archive`, { token: admin.token });
+      assert.equal(archived.status, 200, JSON.stringify(archived.data));
+      return target;
+    }
+
+    function remove(businessId, { token, body } = {}) {
+      return api('DELETE', `/api/admin/businesses/${businessId}`, { token, body });
+    }
+
+    it('only a platform admin can delete, re-checked on every request', async () => {
+      const target = await archivedSeller('delauth');
+      const before = await scopedCounts(target.businessId);
+
+      assert.equal((await remove(target.businessId, { body: { confirmSlug: target.slug } })).status, 401);
+      assert.equal((await remove(target.businessId, { token: other.token, body: { confirmSlug: target.slug } })).status, 403);
+      assert.equal((await remove(target.businessId, { token: target.token, body: { confirmSlug: target.slug } })).status, 401);
+
+      const temp = await registerTenant('delrevoked');
+      await User.updateOne({ _id: temp.user._id }, { $set: { isPlatformAdmin: true } });
+      await User.updateOne({ _id: temp.user._id }, { $set: { isPlatformAdmin: false } });
+      assert.equal((await remove(target.businessId, { token: temp.token, body: { confirmSlug: target.slug } })).status, 403);
+
+      const ownShop = await remove(admin.businessId, { token: admin.token, body: { confirmSlug: admin.slug } });
+      assert.equal(ownShop.status, 400);
+      assert.ok(await Business.exists({ _id: admin.businessId }));
+
+      assert.ok(await Business.exists({ _id: target.businessId }));
+      assert.deepEqual(await scopedCounts(target.businessId), before);
+    });
+
+    it('rejects a missing, wrong, differently-cased or stale shop slug and deletes nothing', async () => {
+      const target = await archivedSeller('delslug');
+      const before = await scopedCounts(target.businessId);
+      const deletedPrefixes = imageStorage.memory.deletedPrefixes.length;
+
+      const attempts = [
+        undefined,
+        {},
+        { confirmSlug: '' },
+        { confirmSlug: other.slug },
+        { confirmSlug: target.slug.toUpperCase() },
+        { confirmSlug: `${target.slug}x` },
+        { confirmSlug: [target.slug] },
+        { confirmSlug: { $ne: '' } },
+      ];
+      for (const body of attempts) {
+        const response = await remove(target.businessId, { token: admin.token, body });
+        assert.equal(response.status, 400, JSON.stringify(body));
+      }
+
+      // The admin page was loaded before the seller's link changed: the old slug must not confirm.
+      const renamed = `${target.slug}-renamed`;
+      await Business.updateOne({ _id: target.businessId }, { $set: { slug: renamed } });
+      const stale = await remove(target.businessId, { token: admin.token, body: { confirmSlug: target.slug } });
+      assert.equal(stale.status, 400);
+      assert.equal(stale.data.errors[0].field, 'confirmSlug');
+
+      // A different seller's correct slug cannot delete this seller either.
+      const crossed = await remove(target.businessId, { token: admin.token, body: { confirmSlug: seller.slug } });
+      assert.equal(crossed.status, 400);
+
+      assert.ok(await Business.exists({ _id: target.businessId }));
+      assert.ok(await Business.exists({ _id: seller.businessId }));
+      assert.deepEqual(await scopedCounts(target.businessId), before);
+      assert.equal(imageStorage.memory.deletedPrefixes.length, deletedPrefixes, 'no files removed');
+    });
+
+    it('deletes the seller account, every scoped record and uploaded files, and nothing else', async () => {
+      const target = await archivedSeller('delok');
+      const before = await scopedCounts(target.businessId);
+      assert.ok(Object.values(before).every((count) => count > 0), JSON.stringify(before));
+      const sellerBefore = await scopedCounts(seller.businessId);
+      const otherBefore = await scopedCounts(other.businessId);
+      const prefixStart = imageStorage.memory.deletedPrefixes.length;
+
+      const deleted = await remove(target.businessId, { token: admin.token, body: { confirmSlug: ` ${target.slug} ` } });
+      assert.equal(deleted.status, 200, JSON.stringify(deleted.data));
+      assert.equal(deleted.data.id, target.businessId);
+
+      assert.equal(await Business.exists({ _id: target.businessId }), null);
+      const after = await scopedCounts(target.businessId);
+      assert.ok(Object.values(after).every((count) => count === 0), JSON.stringify(after));
+      assert.equal(await User.exists({ email: target.email }), null);
+
+      const prefixes = imageStorage.memory.deletedPrefixes.slice(prefixStart).sort();
+      assert.deepEqual(prefixes, imageStorage.KINDS.map((kind) => `cove/${kind}/${target.businessId}/`).sort());
+
+      assert.deepEqual(await scopedCounts(seller.businessId), sellerBefore);
+      assert.deepEqual(await scopedCounts(other.businessId), otherBefore);
+
+      const login = await api('POST', '/api/auth/login', { body: { email: target.email, password } });
+      assert.equal(login.status, 401);
+      assert.equal((await api('GET', `/api/store/${target.slug}`)).status, 404);
+      assert.equal((await remove(target.businessId, { token: admin.token, body: { confirmSlug: target.slug } })).status, 404);
+    });
   });
 
   it('public registration cannot create an admin', async () => {

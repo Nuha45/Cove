@@ -36,6 +36,13 @@ export default function AdminBusinessDetailPage() {
     setBusiness(result.business);
   }
 
+  // The shop may have changed since this page loaded (e.g. a new link), so show what the server has now.
+  function handleActionFailed() {
+    getAdminBusiness(id)
+      .then((result) => setBusiness(result.business))
+      .catch(() => {});
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoadState('loading');
@@ -179,15 +186,15 @@ export default function AdminBusinessDetailPage() {
             {business.archivedAt ? (
               <>
                 <p className="muted">
-                  This shop is offline and its owner cannot log in. Restore it to bring it back, or delete it
-                  permanently with all of its products, orders and customers.
+                  This shop is offline and its owner cannot log in. Restore it to bring it back, or permanently
+                  delete the seller account with all of its shop data and uploaded files.
                 </p>
                 <div className="admin-danger-actions">
                   <button className="secondary" type="button" onClick={() => setActionMode('restore')}>
                     <RotateCcw size={15} aria-hidden="true" /> Restore shop
                   </button>
                   <button className="danger" type="button" onClick={() => setActionMode('delete')}>
-                    <Trash2 size={15} aria-hidden="true" /> Delete permanently
+                    <Trash2 size={15} aria-hidden="true" /> Delete seller account
                   </button>
                 </div>
               </>
@@ -195,7 +202,7 @@ export default function AdminBusinessDetailPage() {
               <>
                 <p className="muted">
                   Archiving takes the storefront offline and signs the owner out. Nothing is deleted, and you can
-                  restore it later. A shop must be archived before it can be deleted.
+                  restore it later. A shop must be archived before the seller account can be deleted.
                 </p>
                 <div className="admin-danger-actions">
                   <button className="danger" type="button" onClick={() => setActionMode('archive')}>
@@ -212,6 +219,7 @@ export default function AdminBusinessDetailPage() {
               mode={actionMode}
               onClose={() => setActionMode(null)}
               onDone={handleActionDone}
+              onFailed={handleActionFailed}
             />
           ) : null}
         </>

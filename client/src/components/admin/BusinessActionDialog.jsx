@@ -24,22 +24,22 @@ const COPY = {
     tone: 'primary',
   },
   delete: {
-    eyebrow: 'DELETE PERMANENTLY',
-    title: (name) => `Delete ${name} forever?`,
-    text: 'This removes the shop, its owner account, products, orders, customers, requests, invoices and analytics. This cannot be undone.',
-    confirm: 'Delete forever',
+    eyebrow: 'DELETE SELLER ACCOUNT',
+    title: (name) => `Permanently delete ${name}?`,
+    text: 'This permanently deletes the seller account and the shop: the owner login, products, orders, customers, customer requests, invoices, notifications, analytics and subscription record, plus every uploaded file (logo, cover, product photos and payment QR). This cannot be undone.',
+    confirm: 'Delete permanently',
     busy: 'Deleting...',
     tone: 'danger',
   },
 };
 
-export default function BusinessActionDialog({ business, mode, onClose, onDone }) {
+export default function BusinessActionDialog({ business, mode, onClose, onDone, onFailed }) {
   const copy = COPY[mode];
   const [confirmSlug, setConfirmSlug] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const needsTyping = mode === 'delete';
-  const canSubmit = !submitting && (!needsTyping || confirmSlug.trim().toLowerCase() === business.slug);
+  const canSubmit = !submitting && (!needsTyping || confirmSlug.trim() === business.slug);
 
   async function submit(event) {
     event.preventDefault();
@@ -55,6 +55,7 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone }
     } catch (err) {
       setError(getErrorMessage(err));
       setSubmitting(false);
+      onFailed?.(mode);
     }
   }
 
@@ -72,11 +73,12 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone }
         <p className="muted">{copy.text}</p>
         {needsTyping ? (
           <label className="confirm-type-field">
-            Type <code>{business.slug}</code> to confirm
+            Type <code>{business.slug}</code> exactly to confirm
             <input
               value={confirmSlug}
               onChange={(event) => setConfirmSlug(event.target.value)}
               autoComplete="off"
+              autoCapitalize="none"
               spellCheck={false}
               autoFocus
             />
