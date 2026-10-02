@@ -4,6 +4,7 @@ import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
 import ResendVerificationButton from '../components/layout/ResendVerificationButton';
+import PaymentCurrencyNote, { PaymentCurrencyInfo } from '../components/settings/PaymentCurrencyNote';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
 import { CATEGORIES } from '../utils/categories';
 import { CURRENCIES } from '../utils/currencies';
@@ -532,6 +533,7 @@ export default function SettingsPage() {
               <p className="muted wide">
                 Customers pay you directly. You confirm payment yourself in Orders. Cove never receives these funds.
               </p>
+              <PaymentCurrencyInfo />
 
               <label className="wide settings-toggle">
                 <span>
@@ -541,6 +543,7 @@ export default function SettingsPage() {
                       ? 'Let customers pay with an order-specific UPI link and QR, or your uploaded QR.'
                       : 'Show your payment QR on checkout and confirmation.'}
                   </small>
+                  <PaymentCurrencyNote method="qr" />
                 </span>
                 <input name="paymentQrEnabled" type="checkbox" checked={form.paymentQrEnabled} onChange={update} />
               </label>
@@ -640,6 +643,7 @@ export default function SettingsPage() {
                 <span>
                   <strong>{form.currency === 'INR' ? 'UPI / payment link' : 'Payment link'}</strong>
                   <small className="muted">Share a link customers can open to pay you.</small>
+                  <PaymentCurrencyNote method="link" />
                 </span>
                 <input name="paymentLinkEnabled" type="checkbox" checked={form.paymentLinkEnabled} onChange={update} />
               </label>
@@ -661,6 +665,7 @@ export default function SettingsPage() {
                 <span>
                   <strong>Payment instructions</strong>
                   <small className="muted">Bank transfer details or other written instructions.</small>
+                  <PaymentCurrencyNote method="instructions" />
                 </span>
                 <input
                   name="paymentInstructionsEnabled"
@@ -688,6 +693,7 @@ export default function SettingsPage() {
                 <span>
                   <strong>Pay on pickup</strong>
                   <small className="muted">Let pickup customers pay when they collect the order.</small>
+                  <PaymentCurrencyNote method="pickup" />
                 </span>
                 <input name="payOnPickupEnabled" type="checkbox" checked={form.payOnPickupEnabled} onChange={update} />
               </label>

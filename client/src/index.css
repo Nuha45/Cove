@@ -1315,6 +1315,31 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
   text-align: center;
   padding: 8px;
 }
+.payment-currency-info {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffaf6;
+}
+.payment-currency-info-title { display: block; font-size: 12px; font-weight: 800; color: var(--foreground); }
+.payment-currency-info p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.settings-toggle > span { min-width: 0; }
+.payment-currency-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 7px;
+}
+.payment-currency-label {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #f4f1ec;
+  color: #605a52;
+  font-size: 11px;
+  font-weight: 700;
+}
+.payment-currency-help { flex: 1 1 220px; font-size: 11px; font-weight: 500; line-height: 1.45; color: var(--muted); }
 .payment-upi-preview {
   display: grid;
   gap: 8px;
