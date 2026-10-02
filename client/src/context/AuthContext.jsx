@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as authService from '../services/authService';
 import { getErrorMessage } from '../utils/errors';
 import { setDefaultCurrency } from '../utils/display';
@@ -48,6 +48,17 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Background refresh that keeps the current screen; failures leave the existing session state alone.
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await authService.me();
+      setUser(data.user);
+      setBusiness(data.business);
+    } catch {
+      // The next normal request handles an expired session.
+    }
+  }, []);
+
   useEffect(() => {
     loadSession();
   }, []);
@@ -87,8 +98,9 @@ export function AuthProvider({ children }) {
       login,
       logout,
       refresh: loadSession,
+      refreshUser,
     }),
-    [user, business, status, error]
+    [user, business, status, error, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

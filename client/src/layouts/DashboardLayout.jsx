@@ -21,7 +21,7 @@ import { copyText, storefrontUrl } from '../utils/storefront';
 const OPEN_FLAG = 'cove-open-onboarding';
 
 export default function DashboardLayout() {
-  const { user, business, logout } = useAuth();
+  const { user, business, logout, refreshUser } = useAuth();
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState('');
   const [activeProductCount, setActiveProductCount] = useState(null);
@@ -58,6 +58,20 @@ export default function DashboardLayout() {
   useEffect(() => {
     if (businessId) refreshPlan();
   }, [businessId, refreshPlan]);
+
+  // Verification can finish in another tab or on another device, so re-check when the seller returns.
+  useEffect(() => {
+    if (!emailUnverified) return undefined;
+    function handleReturn() {
+      if (document.visibilityState === 'visible') refreshUser();
+    }
+    window.addEventListener('focus', handleReturn);
+    document.addEventListener('visibilitychange', handleReturn);
+    return () => {
+      window.removeEventListener('focus', handleReturn);
+      document.removeEventListener('visibilitychange', handleReturn);
+    };
+  }, [emailUnverified, refreshUser]);
 
   const openOnboarding = useCallback((options = {}) => {
     if (options.reset && !businessId) return;

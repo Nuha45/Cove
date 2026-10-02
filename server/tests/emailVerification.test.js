@@ -420,4 +420,22 @@ describe('seller email verification', { timeout: 300000 }, () => {
     assert.equal(ignoredBody.status, 200);
     assert.equal(verificationEmailsTo(verified.email).length, 1, 'resend only ever emails the signed-in account');
   });
+
+  it('16. opening the link with GET (as link scanners do) never verifies or uses up the token', async () => {
+    const seller = await register('scanner');
+    const token = latestToken(seller.email);
+    const query = `?token=${encodeURIComponent(token)}`;
+
+    const apiGet = await api('GET', `/api/auth/verify-email${query}`);
+    assert.notEqual(apiGet.status, 200);
+    await api('HEAD', `/api/auth/verify-email${query}`);
+    await api('GET', `/verify-email${query}`);
+
+    const stored = await User.findById(seller.userId).select('+emailVerificationTokenHash').lean();
+    assert.equal(stored.emailVerified, false);
+    assert.ok(stored.emailVerificationTokenHash, 'token must still be usable');
+
+    assert.equal((await verify(token)).status, 200);
+    assert.equal((await User.findById(seller.userId).lean()).emailVerified, true);
+  });
 });
