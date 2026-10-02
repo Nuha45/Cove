@@ -91,6 +91,33 @@ describe('emailService providers', () => {
     assert.equal(String(captured.options.body).includes('re_test_key_not_real'), false);
   });
 
+  it('sends verification and reset emails with a unique X-Entity-Ref-ID so Gmail does not collapse them', async () => {
+    setEmailEnv({
+      provider: 'resend',
+      from: 'Cove <onboarding@resend.dev>',
+      apiKey: 're_test_key_not_real',
+    });
+    const bodies = [];
+    global.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return { ok: true, text: async () => JSON.stringify({ id: `email_${bodies.length}` }) };
+    };
+
+    const verify = { to: 'seller@example.com', name: 'Seller', verifyUrl: 'https://app.test/verify-email?token=x', expiresInHours: 24 };
+    await emailService.sendEmailVerification(verify);
+    await emailService.sendEmailVerification(verify);
+    await emailService.sendPasswordReset({ to: 'seller@example.com', name: 'Seller', resetUrl: 'https://app.test/reset-password?token=y' });
+
+    const ids = bodies.map((body) => body.headers?.['X-Entity-Ref-ID']);
+    ids.forEach((id) => assert.match(id, /^[0-9a-f-]{36}$/));
+    assert.equal(new Set(ids).size, 3, 'every send gets its own id');
+    assert.equal(bodies[0].subject, bodies[1].subject);
+    assert.match(bodies[0].html, /Verify your email/);
+
+    await emailService.sendEmail({ to: 'seller@example.com', subject: 'Hello', text: 'Body', html: '<p>Body</p>' });
+    assert.equal(bodies[3].headers, undefined, 'other emails are unchanged');
+  });
+
   it('returns a clear configuration error when Resend API key is missing', async () => {
     setEmailEnv({
       provider: 'resend',

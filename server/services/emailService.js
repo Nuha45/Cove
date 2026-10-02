@@ -99,7 +99,13 @@ function safeProviderError(status, bodyText) {
     .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]');
 }
 
-async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
+// Gmail threads same-subject emails and hides content repeated from earlier messages behind "•••".
+// A unique X-Entity-Ref-ID keeps each one-off email (verification, reset) in its own conversation.
+function standaloneHeaders() {
+  return { 'X-Entity-Ref-ID': crypto.randomUUID() };
+}
+
+async function deliverViaResend({ to, subject, html, text, headers, from, apiKey }) {
   if (env.nodeEnv !== 'production') {
     console.info('[email]', {
       provider: 'resend',
@@ -122,6 +128,7 @@ async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
       subject,
       html,
       text,
+      ...(headers ? { headers } : {}),
     }),
   });
 
@@ -170,7 +177,7 @@ async function deliverViaResend({ to, subject, html, text, from, apiKey }) {
   return { ok: true, provider: 'resend', id: parsed?.id };
 }
 
-async function deliver({ to, subject, html, text, meta }) {
+async function deliver({ to, subject, html, text, headers, meta }) {
   const { provider, from, apiKey } = readEmailEnv();
 
   if (!provider) {
@@ -197,6 +204,7 @@ async function deliver({ to, subject, html, text, meta }) {
       subject,
       html,
       text,
+      headers: headers || {},
       meta: meta || {},
       at: new Date().toISOString(),
     });
@@ -217,7 +225,7 @@ async function deliver({ to, subject, html, text, meta }) {
 
   if (provider === 'resend') {
     assertResendConfigured();
-    return deliverViaResend({ to, subject, html, text, from, apiKey });
+    return deliverViaResend({ to, subject, html, text, headers, from, apiKey });
   }
 
   throw new Error(`Unsupported EMAIL_PROVIDER: ${provider}`);
@@ -265,6 +273,7 @@ async function sendPasswordReset({ to, name, resetUrl }) {
     subject,
     html,
     text,
+    headers: standaloneHeaders(),
     meta: provider === 'memory' || debugLinks
       ? { resetUrl }
       : { kind: 'password_reset' },
@@ -319,6 +328,7 @@ async function sendEmailVerification({ to, name, verifyUrl, expiresInHours }) {
     subject,
     html,
     text,
+    headers: standaloneHeaders(),
     meta: provider === 'memory' || debugLinks
       ? { kind: 'email_verification', verifyUrl }
       : { kind: 'email_verification' },
