@@ -9,6 +9,8 @@ import { mediaUrl } from '../../utils/media';
 import { absoluteAsset, absoluteUrl, productJsonLd, truncate, useSeo } from '../../utils/seo';
 import { trackAddToCart, trackProductView } from '../../utils/tracking';
 
+const LOW_STOCK_HINT = 5;
+
 function productSeo(state, product, business, slug) {
   const shopName = business?.name || 'Shop';
   if (state === 'missing' || state === 'error') {
@@ -113,11 +115,12 @@ export default function StoreProductPage() {
 
   const images = product.images?.length ? product.images : [];
   const max = Math.max(1, product.stockQuantity || 0);
+  const lowStock = product.available && product.stockQuantity > 0 && product.stockQuantity <= LOW_STOCK_HINT;
 
   return (
     <div className="store-detail">
-      <Link className="back-link" to={`/store/${slug}`}>
-        <ArrowLeft size={16} aria-hidden="true" /> Shop
+      <Link className="store-detail-back" to={`/store/${slug}`}>
+        <ArrowLeft size={14} aria-hidden="true" /> Back to {business?.name || 'shop'}
       </Link>
 
       <div className="store-detail-grid">
@@ -152,12 +155,14 @@ export default function StoreProductPage() {
         </div>
 
         <div className="store-detail-copy">
-          <p className="eyebrow">{product.category || 'PRODUCT'}</p>
+          {product.category ? <p className="eyebrow">{product.category}</p> : null}
           <h1>{product.name}</h1>
-          <div className="store-detail-price-row">
-            <strong className="store-price">{formatPrice(product.price, currency)}</strong>
-            <p className={product.available ? 'in-stock' : 'out-stock'}>{product.stockAvailability}</p>
-          </div>
+          <p className="store-price">{formatPrice(product.price, currency)}</p>
+          <p className={`store-stock ${product.available ? 'is-available' : 'is-unavailable'}`}>
+            <span className="store-stock-dot" aria-hidden="true" />
+            {product.stockAvailability}
+            {lowStock ? <span className="store-low-stock"> · Only {product.stockQuantity} left</span> : null}
+          </p>
           {product.description ? <p className="store-description">{product.description}</p> : null}
 
           {product.available ? (
@@ -193,6 +198,11 @@ export default function StoreProductPage() {
                     <Plus size={14} />
                   </button>
                 </div>
+                {quantity > 1 ? (
+                  <p className="store-buy-total">
+                    Total <strong>{formatPrice(product.price * quantity, currency)}</strong>
+                  </p>
+                ) : null}
               </div>
               <div className="store-buy-actions">
                 <button className="primary" type="button" onClick={handleAdd}>Add to cart</button>
@@ -215,7 +225,7 @@ export default function StoreProductPage() {
               </div>
             </div>
           ) : (
-            <button className="primary store-buy-unavailable" type="button" disabled>Unavailable</button>
+            <button className="primary store-buy-unavailable" type="button" disabled>Sold out</button>
           )}
           {note ? <p className="inline-note" role="status">{note}</p> : null}
         </div>
