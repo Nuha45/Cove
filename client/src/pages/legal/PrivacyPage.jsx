@@ -1,4 +1,4 @@
-import LegalLayout, { ContactBlock, GrievanceBlock, L, SupportEmail } from './LegalLayout';
+import LegalLayout, { ContactBlock, SupportEmail } from './LegalLayout';
 
 export default function PrivacyPage() {
   return (
@@ -10,9 +10,8 @@ export default function PrivacyPage() {
       <section>
         <h2>1. Who we are</h2>
         <p>
-          Cove is operated by <L k="LEGAL_BUSINESS_NAME" /> (&ldquo;Cove&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). Cove
-          provides software and online storefront infrastructure that allows independent sellers to operate stores and
-          receive customer orders. This policy explains what information we process when you run a store on Cove (a
+          Cove (&ldquo;Cove&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) provides software and storefront tools that
+          help independent sellers create and operate online stores. This policy explains what information we process when you run a store on Cove (a
           &ldquo;seller&rdquo;) or shop from a store hosted on Cove (a &ldquo;customer&rdquo;), and how we use it.
         </p>
       </section>
@@ -185,14 +184,9 @@ export default function PrivacyPage() {
       </section>
 
       <section>
-        <h2>12. Contact and grievances</h2>
-        <p>Questions or requests about your information can be sent to:</p>
+        <h2>12. Contact</h2>
+        <p>Questions, requests or complaints about your information can be sent to:</p>
         <ContactBlock />
-        <p>
-          Complaints and grievances relating to Cove may be submitted using the contact details below. Cove will
-          acknowledge and handle complaints within the timelines applicable to the request and under applicable law.
-        </p>
-        <GrievanceBlock />
       </section>
     </LegalLayout>
   );

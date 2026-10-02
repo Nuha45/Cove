@@ -1,4 +1,4 @@
-import LegalLayout, { ContactBlock, L, SupportEmail } from './LegalLayout';
+import LegalLayout, { ContactBlock, SupportEmail } from './LegalLayout';
 
 export default function RefundPolicyPage() {
   return (
@@ -10,7 +10,7 @@ export default function RefundPolicyPage() {
       <section>
         <h2>1. What this policy covers</h2>
         <p>
-          This policy covers Cove subscriptions that sellers pay to <L k="LEGAL_BUSINESS_NAME" /> for using Cove.
+          This policy covers the Cove subscriptions that sellers pay for to use Cove.
         </p>
         <p>
           <strong>Bought something from a Cove storefront?</strong> Returns, cancellations and refunds for products or
@@ -32,8 +32,7 @@ export default function RefundPolicyPage() {
       <section>
         <h2>3. Billing</h2>
         <p>
-          Cove Basic costs ₹599 per month and Cove Plus costs ₹899 per month. <L k="GST_PRICING_STATEMENT" />{' '}
-          Subscription billing is processed through Razorpay. Plans are billed monthly and renew automatically until you
+          Cove Basic costs ₹599 per month and Cove Plus costs ₹899 per month. Subscription billing is processed through Razorpay. Plans are billed monthly and renew automatically until you
           cancel.
         </p>
       </section>
@@ -83,11 +82,10 @@ export default function RefundPolicyPage() {
           the rest of that period.
         </p>
         <p>
-          If you were charged by mistake, for example charged twice or charged after you cancelled, email us at{' '}
-          <SupportEmail /> within <L k="REFUND_REQUEST_WINDOW" /> days of the charge with your account email and the
-          payment details. If we confirm the charge was a mistake, we will refund it to the original payment method
-          through Razorpay. Refunds usually reach your account within <L k="REFUND_PROCESSING_TIME" />, depending on
-          your bank.
+          If you think you were charged by mistake, for example charged twice or charged after you cancelled, email us
+          at <SupportEmail /> with your account email and the payment details. We will look into it and, if the charge
+          was made in error, arrange a refund to the original payment method through Razorpay. How long a refund takes
+          to reach you depends on Razorpay and your bank.
         </p>
         <p>This policy does not affect any rights you have under applicable law.</p>
       </section>

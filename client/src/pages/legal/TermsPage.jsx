@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import LegalLayout, { ContactBlock, GrievanceBlock, L, SupportEmail } from './LegalLayout';
+import LegalLayout, { ContactBlock, SupportEmail } from './LegalLayout';
 
 export default function TermsPage() {
   return (
@@ -11,9 +11,8 @@ export default function TermsPage() {
       <section>
         <h2>1. About these terms</h2>
         <p>
-          These Terms of Service are an agreement between you and <L k="LEGAL_BUSINESS_NAME" /> (&ldquo;Cove&rdquo;,
-          &ldquo;we&rdquo;, &ldquo;us&rdquo;). Cove provides software and online storefront infrastructure that allows
-          independent sellers to operate stores and receive customer orders.
+          Cove (&ldquo;Cove&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) provides software and storefront tools that
+          help independent sellers create and operate online stores.
         </p>
         <p>
           These terms apply when you create a Cove account to run a store (a &ldquo;seller&rdquo;) and when you browse
@@ -91,7 +90,7 @@ export default function TermsPage() {
           </li>
           <li>After the trial, you must choose a paid plan to keep your store open.</li>
           <li>
-            Cove Basic costs ₹599 per month and Cove Plus costs ₹899 per month. <L k="GST_PRICING_STATEMENT" />
+            Cove Basic costs ₹599 per month and Cove Plus costs ₹899 per month.
           </li>
           <li>
             Subscription billing is processed through our payment partner, Razorpay. Paid plans are billed monthly and
@@ -191,28 +190,12 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2>12. Governing law and jurisdiction</h2>
-        <p>
-          These terms are governed by <L k="GOVERNING_LAW" />. Jurisdiction: <L k="GOVERNING_JURISDICTION" />.
-        </p>
-      </section>
-
-      <section>
-        <h2>13. Complaints and grievances</h2>
+        <h2>12. Questions and complaints</h2>
         <p>
           Questions or complaints about an order, including returns and refunds, should go to the seller first, using
           the contact details shown on the seller&apos;s storefront.
         </p>
-        <p>
-          Complaints and grievances relating to Cove may be submitted using the contact details below. Cove will
-          acknowledge and handle complaints within the timelines applicable to the request and under applicable law.
-        </p>
-        <GrievanceBlock />
-      </section>
-
-      <section>
-        <h2>14. Contact</h2>
-        <p>Questions about these terms can be sent to:</p>
+        <p>Questions or complaints about Cove itself, or about these terms, can be sent to:</p>
         <ContactBlock />
       </section>
     </LegalLayout>

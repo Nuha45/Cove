@@ -2,46 +2,18 @@ import { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { SiteFooter, SiteHeader } from '../../components/marketing/SiteChrome';
 import { useAuth } from '../../context/AuthContext';
-import { isPlaceholder, LEGAL, LEGAL_LINKS } from '../../content/legal';
+import { LEGAL, LEGAL_LINKS } from '../../content/legal';
 import { absoluteUrl, useSeo } from '../../utils/seo';
 
-// Renders a LEGAL value, visibly marked while it is still a placeholder.
-export function L({ k }) {
-  const value = LEGAL[k];
-  if (isPlaceholder(value)) return <mark className="legal-placeholder">{value}</mark>;
-  return value;
-}
-
-function MailLink({ k }) {
-  if (isPlaceholder(LEGAL[k])) return <L k={k} />;
-  return <a href={`mailto:${LEGAL[k]}`}>{LEGAL[k]}</a>;
-}
-
 export function SupportEmail() {
-  return <MailLink k="SUPPORT_EMAIL" />;
+  return <a href={`mailto:${LEGAL.SUPPORT_EMAIL}`}>{LEGAL.SUPPORT_EMAIL}</a>;
 }
 
 export function ContactBlock() {
   return (
     <address className="legal-contact">
-      <strong><L k="LEGAL_BUSINESS_NAME" /></strong>
-      <span><L k="REGISTERED_ADDRESS" /></span>
+      <strong>Cove</strong>
       <span>Email: <SupportEmail /></span>
-      <span>Phone: <L k="SUPPORT_PHONE" /></span>
-    </address>
-  );
-}
-
-export function GrievanceBlock() {
-  return (
-    <address className="legal-contact">
-      <strong>Grievance Officer</strong>
-      <span>Name: <L k="GRIEVANCE_OFFICER_NAME" /></span>
-      <span>Designation: <L k="GRIEVANCE_OFFICER_DESIGNATION" /></span>
-      <span>Email: <MailLink k="GRIEVANCE_OFFICER_EMAIL" /></span>
-      <span>Phone: <L k="SUPPORT_PHONE" /></span>
-      <span>Address: <L k="REGISTERED_ADDRESS" /></span>
-      <span>Response timeline: <L k="GRIEVANCE_RESPONSE_TIMELINE" /></span>
     </address>
   );
 }
@@ -69,7 +41,7 @@ export default function LegalLayout({ path, title, description, children }) {
         <article className="legal-article">
           <header className="legal-head">
             <h1>{title}</h1>
-            <p>Effective date: <L k="EFFECTIVE_DATE" /></p>
+            <p>Effective date: {LEGAL.EFFECTIVE_DATE}</p>
           </header>
           {children}
         </article>
