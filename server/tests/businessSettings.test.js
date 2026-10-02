@@ -296,4 +296,23 @@ describe('businessSettings', { timeout: 180000 }, () => {
       body: { storefrontActive: true, pickupEnabled: true, deliveryEnabled: true },
     });
   });
+
+  it('keeps stored product prices unchanged when the store currency changes', async () => {
+    const product = await addProduct(other.token, { name: 'Gold Hoops', price: 1250.5, stockQuantity: 3 });
+    assert.equal(product.price, 1250.5);
+
+    for (const currency of ['AED', 'USD', 'GBP', 'EUR', 'INR']) {
+      const switched = await api('PATCH', '/api/business/settings', { token: other.token, body: { currency } });
+      assert.equal(switched.status, 200, JSON.stringify(switched.data));
+      assert.equal(switched.data.business.currency, currency);
+
+      const stored = await Product.findById(product.id).lean();
+      assert.equal(stored.price, 1250.5);
+
+      const store = await api('GET', `/api/store/${other.slug}`);
+      assert.equal(store.status, 200);
+      assert.equal(store.data.business.currency, currency);
+      assert.equal(store.data.products.find((item) => item.id === product.id).price, 1250.5);
+    }
+  });
 });

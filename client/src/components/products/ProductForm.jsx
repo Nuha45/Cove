@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ImagePlus, X } from 'lucide-react';
+import { currencySymbol } from '../../utils/display';
 import { compressImage } from '../../utils/images';
 import { mediaUrl } from '../../utils/media';
 
@@ -93,7 +94,9 @@ export default function ProductForm({
   onChange,
   onSubmit,
   onCancel,
+  currency,
 }) {
+  const symbol = currencySymbol(currency);
   const fileInput = useRef(null);
   const [imageError, setImageError] = useState('');
   const statusOptions = form.status === 'Archived'
@@ -149,12 +152,12 @@ export default function ProductForm({
           {errors.name ? <span className="field-error">{errors.name}</span> : null}
         </label>
         <label>
-          Price
+          Price ({symbol})
           <input
             name="price"
             value={form.price}
             onChange={update}
-            placeholder="₹ 0"
+            placeholder={`${symbol} 0`}
             inputMode="decimal"
           />
           {errors.price ? <span className="field-error">{errors.price}</span> : null}

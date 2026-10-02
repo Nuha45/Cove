@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import AdvancedLock from '../ui/AdvancedLock';
 import { getProduct, listProducts } from '../../services/productService';
 import { updateBusinessSettings } from '../../services/businessService';
+import { formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
 
 const MAX_FEATURED_PRODUCTS = 8;
@@ -195,7 +196,7 @@ export default function PromotionsEditor({ business, advanced, loading, refresh,
             value={draft.storefrontAnnouncement}
             onChange={updateText}
             maxLength={140}
-            placeholder="Free delivery on orders above ₹999 this week"
+            placeholder={`Free delivery on orders above ${formatPrice(999)} this week`}
           />
           <small className="muted">{draft.storefrontAnnouncement.length}/140 · shown at the top of every store page</small>
           {fieldErrors.storefrontAnnouncement ? <span className="field-error">{fieldErrors.storefrontAnnouncement}</span> : null}

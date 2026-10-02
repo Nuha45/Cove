@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const StoreEvent = require('../models/StoreEvent');
+const Business = require('../models/Business');
 const env = require('../config/env');
+const { formatMoney } = require('../utils/currencies');
 const { resolveRange } = require('../utils/dateRange');
 
 // Minimum sample sizes before Cove states an insight. Below these the UI shows an empty state.
@@ -287,10 +289,10 @@ async function getProductPerformance(businessId, input = {}, { now = new Date(),
   };
 }
 
-function priceBucketLabel(lower) {
+function priceBucketLabel(lower, currency) {
   const index = PRICE_BUCKETS.indexOf(lower);
   const upper = PRICE_BUCKETS[index + 1];
-  const fmt = (value) => `₹${value.toLocaleString('en-IN')}`;
+  const fmt = (value) => formatMoney(value, currency);
   if (upper === undefined) return `${fmt(lower)}+`;
   return `${fmt(lower)}–${fmt(upper)}`;
 }
@@ -306,7 +308,7 @@ async function getInsights(businessId, input = {}, { now = new Date() } = {}) {
   const range = rangeFor(input, now);
   const match = { businessId: oid(businessId), createdAt: { $gte: range.start, $lt: range.end } };
 
-  const [categoryRows, priceRows, activityRows] = await Promise.all([
+  const [categoryRows, priceRows, activityRows, business] = await Promise.all([
     StoreEvent.aggregate([
       { $match: { ...match, type: { $in: ['product_view', 'add_to_cart'] } } },
       { $group: { _id: { type: '$type', category: '$category' }, count: { $sum: 1 } } },
@@ -334,6 +336,7 @@ async function getInsights(businessId, input = {}, { now = new Date() } = {}) {
         },
       },
     ]),
+    Business.findById(businessId).select('currency').lean(),
   ]);
 
   const categoryTop = (type, minimum) => {
@@ -355,7 +358,7 @@ async function getInsights(businessId, input = {}, { now = new Date() } = {}) {
   const priceRange = priceTotal >= MIN_VIEWS_FOR_INSIGHT && topPrice
     ? {
       available: true,
-      value: priceBucketLabel(topPrice._id),
+      value: priceBucketLabel(topPrice._id, business?.currency),
       share: percent(topPrice.count, priceTotal),
       sample: priceTotal,
       minimum: MIN_VIEWS_FOR_INSIGHT,

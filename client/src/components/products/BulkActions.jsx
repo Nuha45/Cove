@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { bulkUpdateProducts } from '../../services/productService';
+import { currencySymbol, formatPrice } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
 
 export const BULK_LIMIT = 100;
 
 const ACTIONS = {
-  setPrice: { label: 'Set price', input: 'number', placeholder: 'New price in ₹', step: '0.01', min: 0 },
+  setPrice: { label: 'Set price', input: 'number', placeholder: () => `New price in ${currencySymbol()}`, step: '0.01', min: 0 },
   adjustPricePercent: { label: 'Change price by %', input: 'number', placeholder: 'e.g. 10 or -15', step: '1', min: -90, max: 500 },
   setStock: { label: 'Set stock', input: 'number', placeholder: 'New stock quantity', step: '1', min: 0 },
   adjustStock: { label: 'Add or remove stock', input: 'number', placeholder: 'e.g. 5 or -3', step: '1' },
@@ -18,8 +19,8 @@ function describe(key, value, count) {
   const products = `${count} ${count === 1 ? 'product' : 'products'}`;
   const amount = Number(value);
   switch (key) {
-    case 'setPrice': return `Set the price of ${products} to ₹${amount.toLocaleString('en-IN')}.`;
-    case 'adjustPricePercent': return `${amount > 0 ? 'Increase' : 'Decrease'} the price of ${products} by ${Math.abs(amount)}%. Prices are rounded to the nearest paisa.`;
+    case 'setPrice': return `Set the price of ${products} to ${formatPrice(amount)}.`;
+    case 'adjustPricePercent': return `${amount > 0 ? 'Increase' : 'Decrease'} the price of ${products} by ${Math.abs(amount)}%. Prices are rounded to 2 decimal places.`;
     case 'setStock': return `Set stock for ${products} to ${amount}.`;
     case 'adjustStock': return `${amount > 0 ? 'Add' : 'Remove'} ${Math.abs(amount)} ${amount > 0 ? 'to' : 'from'} the stock of ${products}. Stock never goes below 0.`;
     case 'setStatusActive': return `Publish ${products}. Active products appear on your storefront.`;
@@ -115,7 +116,7 @@ export default function BulkActions({ selected, onClear, onDone, onExport, expor
               type="number"
               inputMode="decimal"
               aria-label={config.label}
-              placeholder={config.placeholder}
+              placeholder={typeof config.placeholder === 'function' ? config.placeholder() : config.placeholder}
               step={config.step}
               min={config.min}
               max={config.max}

@@ -1,3 +1,5 @@
+import { CURRENCIES } from './currencies';
+
 export function greeting(name) {
   const hour = new Date().getHours();
   const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -27,28 +29,31 @@ export function getDefaultCurrency() {
   return defaultCurrency;
 }
 
+function currencyCode(currency) {
+  const code = String(currency || defaultCurrency || 'INR').toUpperCase();
+  return CURRENCIES.some((item) => item.code === code) ? code : 'INR';
+}
+
+export function currencySymbol(currency = defaultCurrency) {
+  const code = currencyCode(currency);
+  return CURRENCIES.find((item) => item.code === code).symbol;
+}
+
+// Amounts are plain numbers in the shop's currency: this only changes the symbol, never the value.
+// "₹1,25,000", "$1,250.50", "د.إ 20.40".
 export function formatPrice(amount, currency = defaultCurrency) {
+  const code = currencyCode(currency);
   const value = Number(amount);
-  const code = currency || defaultCurrency;
-  if (!Number.isFinite(value)) {
-    try {
-      return new Intl.NumberFormat('en', { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(0);
-    } catch {
-      return '0';
-    }
-  }
-  const whole = Math.abs(value - Math.round(value)) < 0.001;
-  const locale = code === 'INR' ? 'en-IN' : 'en';
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: code,
-      minimumFractionDigits: whole ? 0 : 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${code} ${value.toFixed(whole ? 0 : 2)}`;
-  }
+  const safe = Number.isFinite(value) ? value : 0;
+  const whole = Math.abs(safe - Math.round(safe)) < 0.001;
+  const number = new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en', {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(safe));
+  const sign = safe < 0 ? '-' : '';
+  const symbol = currencySymbol(code);
+  // The dirham sign is Arabic script; a space keeps it from running into the digits.
+  return code === 'AED' ? `${sign}${symbol} ${number}` : `${sign}${symbol}${number}`;
 }
 
 export function formatOrderDate(iso) {

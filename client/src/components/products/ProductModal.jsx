@@ -6,10 +6,12 @@ import ProductForm, {
   productFieldErrors,
   productPayload,
 } from './ProductForm';
+import { useAuth } from '../../context/AuthContext';
 import { createProduct, updateProduct } from '../../services/productService';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
 
 export default function ProductModal({ product, onClose, onSaved }) {
+  const { business } = useAuth();
   const editing = Boolean(product);
   const [form, setForm] = useState(editing ? formFromProduct(product) : emptyProductForm);
   const [errors, setErrors] = useState({});
@@ -59,6 +61,7 @@ export default function ProductModal({ product, onClose, onSaved }) {
           onChange={setForm}
           onSubmit={handleSubmit}
           onCancel={onClose}
+          currency={business?.currency}
         />
       </div>
     </div>

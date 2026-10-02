@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const { currencyCode, currencySymbol, formatMoney: formatCurrency } = require('./currencies');
 
 const COLORS = {
   ink: '#1F1A17',
@@ -8,15 +9,15 @@ const COLORS = {
   soft: '#FBF7F3',
 };
 
-// Built-in PDF fonts cannot render the rupee sign, so INR uses the common "Rs." form.
+// Built-in PDF fonts (WinAnsi) have $, £ and € but no rupee sign or Arabic script,
+// so INR prints as "Rs." and AED as its code.
+const PDF_PREFIX = { INR: 'Rs. ', AED: 'AED ' };
+
 function formatMoney(amount, currency = 'INR') {
-  const value = Number(amount) || 0;
-  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
-  const number = new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-  return currency === 'INR' ? `Rs. ${number}` : `${currency} ${number}`;
+  const code = currencyCode(currency);
+  const formatted = formatCurrency(amount, code, { decimals: 2 });
+  if (!PDF_PREFIX[code]) return formatted;
+  return formatted.replace(currencySymbol(code), PDF_PREFIX[code]).replace(/ {2,}/, ' ');
 }
 
 function formatDate(date) {

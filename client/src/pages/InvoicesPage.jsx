@@ -150,7 +150,7 @@ export default function InvoicesPage() {
                     </small>
                   </div>
                   <div className="invoice-meta">
-                    <strong>{formatPrice(invoice.total)}</strong>
+                    <strong>{formatPrice(invoice.total, invoice.currency)}</strong>
                     <small>Issued {formatOrderDate(invoice.issuedAt)}</small>
                   </div>
                   <div className="invoice-actions">

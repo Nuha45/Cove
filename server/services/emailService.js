@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const env = require('../config/env');
+const { formatMoney: formatCurrency } = require('../utils/currencies');
 
 const memoryOutbox = [];
 let warnedUnconfigured = false;
@@ -527,16 +528,7 @@ async function sendSellerCustomerWant({ to, businessName, wantPreview, wantsUrl 
 }
 
 function formatMoney(amount, currency = 'INR') {
-  const value = Number(amount) || 0;
-  try {
-    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${currency} ${value.toFixed(2)}`;
-  }
+  return formatCurrency(amount, currency);
 }
 
 async function sendSellerLowStock({ to, businessName, products, threshold, productsUrl }) {
