@@ -3562,7 +3562,7 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 .store-detail-back:hover { color: var(--pdp-ink); }
 .store-detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 460px) minmax(0, 1fr);
   gap: clamp(32px, 6vw, 88px);
   align-items: start;
 }
@@ -3576,8 +3576,10 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 .store-gallery-main,
 .store-gallery > img {
   width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
+  height: auto;
+  max-height: 560px;
+  object-fit: contain;
+  justify-self: center;
   border-radius: 4px;
   border: 0;
   box-shadow: none;
@@ -3585,14 +3587,13 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 .store-thumb-fallback.large {
   min-height: 0;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 1;
   border-radius: 4px;
 }
 .store-thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
 .store-thumbs button {
   width: 64px;
-  aspect-ratio: 4 / 5;
-  height: auto;
+  height: 64px;
   border-radius: 2px;
   overflow: hidden;
   border: 1px solid transparent;
@@ -4841,7 +4842,7 @@ a.store-link, .store-link {
   .store-cart-summary { position: static; }
   .store-detail { width: 100%; }
   .store-detail-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
     gap: 32px;
   }
   .store-gallery { top: 78px; }
@@ -6590,6 +6591,6 @@ html.home-scroll { scroll-behavior: smooth; scroll-padding-top: 76px; }
   .store-gallery > img,
   .store-thumb-fallback.large { border-radius: 0; }
   .store-thumbs { padding: 0 14px; flex-wrap: nowrap; overflow-x: auto; }
-  .store-thumbs button { flex: none; width: 56px; }
+  .store-thumbs button { flex: none; width: 56px; height: 56px; }
   .store-description { font-size: 15px; line-height: 1.75; }
 }

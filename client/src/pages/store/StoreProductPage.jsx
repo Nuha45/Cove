@@ -129,6 +129,8 @@ export default function StoreProductPage() {
             <img
               className="store-gallery-main"
               src={mediaUrl(images[activeImage] || images[0])}
+              // Never stretch past the photo's real width: small seller uploads turn blurry when enlarged.
+              onLoad={(event) => { event.currentTarget.style.maxWidth = `${event.currentTarget.naturalWidth}px`; }}
               alt={images.length > 1
                 ? `${product.name}, image ${activeImage + 1} of ${images.length}`
                 : product.name}
