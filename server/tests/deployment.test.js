@@ -5,7 +5,7 @@ const http = require('http');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const mongoose = require('mongoose');
-const connectDB = require('../config/db');
+const { connectTestDB } = require('./_testDb');
 const env = require('../config/env');
 const app = require('../app');
 const User = require('../models/User');
@@ -41,7 +41,7 @@ describe('deployment readiness', { timeout: 120000 }, () => {
   let seller;
 
   before(async () => {
-    await connectDB();
+    await connectTestDB();
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     base = `http://127.0.0.1:${server.address().port}`;
@@ -60,7 +60,7 @@ describe('deployment readiness', { timeout: 120000 }, () => {
       },
     });
     assert.equal(registered.status, 201, registered.text);
-    const user = await User.findOne({ email });
+    const user = await User.findOneAndUpdate({ email }, { $set: { emailVerified: true } }, { new: true });
     const business = await Business.findById(user.businessId);
     createdBusinessIds.push(user.businessId);
     seller = { businessId: business._id, slug: business.slug };

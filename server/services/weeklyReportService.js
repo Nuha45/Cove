@@ -36,7 +36,11 @@ async function eligibleBusinessIds(now) {
 }
 
 async function sendReportForBusiness(business, week, now) {
-  const owner = await User.findOne({ businessId: business._id, role: 'owner' }).select('email').lean();
+  const owner = await User.findOne({
+    businessId: business._id,
+    role: 'owner',
+    emailVerified: { $ne: false },
+  }).select('email').lean();
   if (!owner?.email) return 'no_owner';
 
   const [performance, products] = await Promise.all([

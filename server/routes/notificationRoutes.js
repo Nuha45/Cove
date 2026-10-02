@@ -2,6 +2,7 @@ const express = require('express');
 const { param, query } = require('express-validator');
 const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/requireVerifiedEmail');
 const { writeLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const notificationController = require('../controllers/notificationController');
@@ -12,7 +13,7 @@ function isObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
 }
 
-router.use(protect);
+router.use(protect, requireVerifiedEmail);
 
 router.get(
   '/',

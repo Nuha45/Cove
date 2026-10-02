@@ -59,6 +59,16 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+const verifyEmail = asyncHandler(async (req, res) => {
+  const result = await authService.verifyEmail(req.body.token);
+  res.json(result);
+});
+
+const resendVerification = asyncHandler(async (req, res) => {
+  const result = await authService.resendEmailVerification(req.user);
+  res.json(result);
+});
+
 module.exports = {
   register,
   login,
@@ -66,4 +76,6 @@ module.exports = {
   me,
   forgotPassword,
   resetPassword,
+  verifyEmail,
+  resendVerification,
 };

@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/layout/Sidebar';
 import TopBar from '../components/layout/TopBar';
+import ResendVerificationButton from '../components/layout/ResendVerificationButton';
 import OnboardingModal from '../components/onboarding/OnboardingModal';
 import { getErrorMessage } from '../utils/errors';
 import {
@@ -32,6 +33,7 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const businessId = business?.id;
+  const emailUnverified = user?.emailVerified === false;
 
   // UI hint only. Plan features and the store pause are enforced on the server.
   const refreshPlan = useCallback(async () => {
@@ -118,7 +120,7 @@ export default function DashboardLayout() {
   }, [businessId, location.pathname]);
 
   useEffect(() => {
-    if (!businessId || activeProductCount === null) return;
+    if (!businessId || activeProductCount === null || emailUnverified) return;
 
     let forceOpen = false;
     try {
@@ -142,7 +144,7 @@ export default function DashboardLayout() {
       setOnboardingStep(state.step || 0);
       setOnboardingOpen(true);
     }
-  }, [businessId, activeProductCount, location.pathname, openOnboarding]);
+  }, [businessId, activeProductCount, emailUnverified, location.pathname, openOnboarding]);
 
   function notify(text) {
     setToast(text);
@@ -208,6 +210,18 @@ export default function DashboardLayout() {
       <main className="main">
         <TopBar onMenu={() => setMobileNav((open) => !open)} menuOpen={mobileNav} />
         <div className="content">
+          {emailUnverified ? (
+            <div className="billing-callout warn plan-banner" role="status">
+              <div>
+                <strong>Check your email to verify your Cove account</strong>
+                <p>
+                  We sent a verification link to {user.email}. Please verify your email address to continue.
+                  Your storefront stays closed until then.
+                </p>
+              </div>
+              <ResendVerificationButton className="primary" onResult={notify} />
+            </div>
+          ) : null}
           {(plan.storePaused || plan.access === 'trial_ended') && location.pathname !== '/billing' ? (
             <div className="billing-callout warn plan-banner" role="status">
               <div>

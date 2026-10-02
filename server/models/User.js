@@ -54,6 +54,27 @@ const userSchema = new mongoose.Schema(
       select: false,
       default: undefined,
     },
+    // Accounts created before verification existed have no stored value and count as verified.
+    // Registration always stores false explicitly until the emailed link is used.
+    emailVerified: {
+      type: Boolean,
+      default: true,
+    },
+    emailVerifiedAt: {
+      type: Date,
+      default: undefined,
+    },
+    // SHA-256 of the one-time verification token. Raw token is never stored.
+    emailVerificationTokenHash: {
+      type: String,
+      select: false,
+      default: undefined,
+    },
+    emailVerificationExpiresAt: {
+      type: Date,
+      select: false,
+      default: undefined,
+    },
   },
   { timestamps: true }
 );
@@ -63,6 +84,15 @@ userSchema.index(
   { unique: true, sparse: true }
 );
 
+userSchema.index(
+  { emailVerificationTokenHash: 1 },
+  { unique: true, sparse: true }
+);
+
+userSchema.methods.isEmailVerified = function isEmailVerified() {
+  return this.emailVerified !== false;
+};
+
 userSchema.methods.toPublic = function toPublic() {
   return {
     id: this._id.toString(),
@@ -70,6 +100,7 @@ userSchema.methods.toPublic = function toPublic() {
     email: this.email,
     role: this.role,
     isPlatformAdmin: this.isPlatformAdmin === true,
+    emailVerified: this.isEmailVerified(),
   };
 };
 

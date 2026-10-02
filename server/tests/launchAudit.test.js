@@ -11,7 +11,7 @@ process.env.RAZORPAY_PLAN_ID = process.env.RAZORPAY_PLAN_ID || 'plan_cove_pro_te
 process.env.COVE_GRANT_TRIAL_ON_REGISTER = 'true';
 process.env.COVE_ENFORCE_BILLING = 'false';
 
-const connectDB = require('../config/db');
+const { connectTestDB } = require('./_testDb');
 const env = require('../config/env');
 const app = require('../app');
 const User = require('../models/User');
@@ -69,7 +69,7 @@ async function registerTenant(label) {
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
-  const user = await User.findOne({ email });
+  const user = await User.findOneAndUpdate({ email }, { $set: { emailVerified: true } }, { new: true });
   const business = await Business.findById(user.businessId);
   createdBusinessIds.push(user.businessId);
   return { token: signToken(user), businessId: user.businessId, slug: business.slug };
@@ -108,7 +108,7 @@ async function sendWebhook(event, entity, label) {
 
 describe('launch audit fixes', { timeout: 180000 }, () => {
   before(async () => {
-    await connectDB();
+    await connectTestDB();
     razorpayService.setClientForTests(fakeRazorpay());
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

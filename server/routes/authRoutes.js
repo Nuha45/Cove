@@ -3,6 +3,8 @@ const authLimiter = require('../middleware/rateLimiter');
 const {
   forgotPasswordLimiter,
   resetPasswordLimiter,
+  verifyEmailLimiter,
+  resendVerificationLimiter,
 } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const { protect } = require('../middleware/auth');
@@ -11,6 +13,7 @@ const {
   loginRules,
   forgotPasswordRules,
   resetPasswordRules,
+  verifyEmailRules,
 } = require('../validators/authValidator');
 const authController = require('../controllers/authController');
 
@@ -33,6 +36,14 @@ router.post(
   resetPasswordRules,
   validate,
   authController.resetPassword
+);
+// POST, not GET, so link scanners that prefetch URLs in emails cannot use up the token.
+router.post('/verify-email', verifyEmailLimiter, verifyEmailRules, validate, authController.verifyEmail);
+router.post(
+  '/resend-verification',
+  protect,
+  resendVerificationLimiter,
+  authController.resendVerification
 );
 
 module.exports = router;

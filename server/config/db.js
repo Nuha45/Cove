@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const env = require('./env');
 
 async function connectDB() {
+  // Production database only. Tests must use tests/_testDb.js, so refuse inside any test run.
+  if (env.testMode || process.env.NODE_TEST_CONTEXT || !env.mongoUri) {
+    throw new Error('connectDB() uses MONGODB_URI and must never run under tests. Use connectTestDB() from tests/_testDb.js.');
+  }
   // Atlas connection strings need an SRV lookup. Some home routers refuse that
   // lookup from Node, so use public DNS for it.
   dns.setServers(['8.8.8.8', '1.1.1.1']);

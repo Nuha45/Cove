@@ -27,13 +27,15 @@ function parseDuration(value) {
 
 const jwtDuration = parseDuration(process.env.JWT_EXPIRES_IN || '7d');
 const jwtSecret = requireEnv('JWT_SECRET');
-const mongoUri = requireEnv('MONGODB_URI');
+// Automated tests connect only through tests/_testDb.js (TEST_MONGODB_URI), never through MONGODB_URI.
+const testMode = process.env.COVE_TEST_MODE === 'true';
+const mongoUri = testMode ? '' : requireEnv('MONGODB_URI');
 
-const placeholderUri = mongoUri.includes('USER:PASSWORD')
+const placeholderUri = !testMode && (mongoUri.includes('USER:PASSWORD')
   || mongoUri.includes('<password>')
   || mongoUri.includes('CLUSTER.mongodb.net')
   || mongoUri.includes('127.0.0.1')
-  || mongoUri.includes('localhost');
+  || mongoUri.includes('localhost'));
 
 if (placeholderUri) {
   throw new Error(
@@ -103,6 +105,7 @@ module.exports = {
   isProduction,
   port: Number(process.env.PORT) || 5000,
   mongoUri,
+  testMode,
   jwtSecret,
   jwtExpiresIn: jwtDuration.expiresIn,
   jwtMaxAgeMs: jwtDuration.maxAgeMs,

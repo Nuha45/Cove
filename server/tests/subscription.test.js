@@ -13,7 +13,7 @@ process.env.RAZORPAY_ADVANCED_PLAN_ID = 'plan_test_advanced_899';
 process.env.COVE_GRANT_TRIAL_ON_REGISTER = 'true';
 process.env.COVE_ENFORCE_BILLING = 'false';
 
-const connectDB = require('../config/db');
+const { connectTestDB } = require('./_testDb');
 const env = require('../config/env');
 const app = require('../app');
 const User = require('../models/User');
@@ -126,7 +126,7 @@ async function registerTenant(label) {
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
-  const user = await User.findOne({ email });
+  const user = await User.findOneAndUpdate({ email }, { $set: { emailVerified: true } }, { new: true });
   const business = await Business.findById(user.businessId);
   createdBusinessIds.push(user.businessId);
   return { email, token: signToken(user), businessId: user.businessId, slug: business.slug };
@@ -217,7 +217,7 @@ async function activatePaidPlan(tenant, planKey) {
 
 describe('subscriptions, 7-day trial and plan access', { timeout: 240000 }, () => {
   before(async () => {
-    await connectDB();
+    await connectTestDB();
     razorpayService.setClientForTests(fakeClient());
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

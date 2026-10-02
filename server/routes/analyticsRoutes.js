@@ -1,5 +1,6 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/requireVerifiedEmail');
 const { requireAdvanced } = require('../middleware/requireAdvanced');
 const { exportLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
@@ -8,7 +9,7 @@ const analyticsController = require('../controllers/analyticsController');
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, requireVerifiedEmail);
 router.get('/', analyticsController.getOverview);
 
 // Cove Plus analytics. Every query is scoped to the session business.

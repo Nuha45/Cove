@@ -13,6 +13,23 @@ This app uses MongoDB Atlas. There is no local database to install.
 3. In Atlas Network Access, allow your current IP address.
 4. Paste the string into `MONGODB_URI` in `server/.env`. Use the database name `cove`.
 
+### Automated tests
+
+Tests never use `MONGODB_URI`. They connect only to `TEST_MONGODB_URI`, a separate database whose
+name contains `test` (use `cove_test`). Set it in `server/.env` (gitignored) or in the CI environment:
+
+```bash
+TEST_MONGODB_URI=mongodb+srv://TEST_USER:TEST_PASSWORD@CLUSTER.mongodb.net/cove_test?retryWrites=true&w=majority
+```
+
+- `npm test` stops immediately if `TEST_MONGODB_URI` is missing, has no database name, or points to the
+  same database as `MONGODB_URI` (compared by host and database name, ignoring credentials and options).
+- Best: a separate Atlas project or cluster, or a local `mongodb://127.0.0.1:27017/cove_test`.
+  A `cove_test` database on the production cluster also works; give its Atlas user `readWrite` on
+  `cove_test` only, so the test credentials cannot reach `cove`.
+- Tests create and delete their own records and build indexes only in that database.
+- CI: add `TEST_MONGODB_URI` as a secret and pass it as an environment variable to `npm test`. Never commit it.
+
 ## Run it
 
 1. From this folder, after `server/.env` has your Atlas connection string:
@@ -82,7 +99,7 @@ Cove has two parts: a static React build (`client/dist`) and a Node API (`server
 
 ```bash
 npm run install:all
-npm test          # backend tests (needs a real MONGODB_URI in server/.env)
+npm test          # backend tests (needs TEST_MONGODB_URI, see "Automated tests" below)
 npm run build     # builds client/dist, including robots.txt
 npm start         # starts the API (NODE_ENV=production in the host's env)
 ```

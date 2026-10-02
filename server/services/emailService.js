@@ -280,6 +280,57 @@ async function sendPasswordReset({ to, name, resetUrl }) {
   return result;
 }
 
+const SUPPORT_EMAIL = 'getcove.app@gmail.com';
+
+async function sendEmailVerification({ to, name, verifyUrl, expiresInHours }) {
+  const subject = 'Verify your email for Cove';
+  const text = [
+    `Hi ${name || 'there'},`,
+    '',
+    'Please confirm that this email address belongs to you so you can start using your Cove account.',
+    `Open this link within ${expiresInHours} hours to verify your email:`,
+    verifyUrl,
+    '',
+    'This link only confirms that you own this email address. It can be used once.',
+    'If you did not create a Cove account, you can ignore this email.',
+    '',
+    `Questions? Contact ${SUPPORT_EMAIL}.`,
+  ].join('\n');
+
+  const html = wrapHtml({
+    title: 'Verify your email',
+    bodyHtml: `
+      <p style="line-height:1.5;">Hi ${escapeHtml(name || 'there')},</p>
+      <p style="line-height:1.5;">Please confirm that this email address belongs to you so you can start using your Cove account.</p>
+      <p style="margin:24px 0;">
+        <a href="${escapeHtml(verifyUrl)}" style="display:inline-block;background:#e8743b;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-family:Arial,sans-serif;font-size:14px;">
+          Verify your email
+        </a>
+      </p>
+      <p style="line-height:1.5;font-size:13px;color:#8a7b6c;">This link only confirms that you own this email address. It expires in ${escapeHtml(expiresInHours)} hours and can be used once.</p>
+      <p style="line-height:1.5;font-size:13px;color:#8a7b6c;">If you did not create a Cove account, you can ignore this email.</p>
+      <p style="line-height:1.5;font-size:13px;color:#8a7b6c;">Questions? Contact <a href="mailto:${SUPPORT_EMAIL}" style="color:#b06a3c;">${SUPPORT_EMAIL}</a>.</p>
+    `,
+  });
+
+  const { provider, debugLinks } = readEmailEnv();
+  const result = await sendEmail({
+    to,
+    subject,
+    html,
+    text,
+    meta: provider === 'memory' || debugLinks
+      ? { kind: 'email_verification', verifyUrl }
+      : { kind: 'email_verification' },
+  });
+
+  if (!result.ok && env.nodeEnv !== 'production') {
+    console.error('[email] verification send failed', { error: result.error });
+  }
+
+  return result;
+}
+
 async function sendSellerNewOrder({ to, businessName, order, orderUrl, currency }) {
   const subject = `New order received · ${order.orderNumber}`;
   const total = formatMoney(order.total, currency);
@@ -604,6 +655,7 @@ function hashResetToken(token) {
 module.exports = {
   sendEmail,
   sendPasswordReset,
+  sendEmailVerification,
   sendSellerNewOrder,
   sendCustomerOrderStatus,
   sendSellerPaymentSubmitted,

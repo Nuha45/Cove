@@ -15,7 +15,7 @@ process.env.COVE_ENFORCE_BILLING = 'true';
 process.env.PUBLIC_SITE_URL = 'https://pause.cove.test';
 process.env.CLIENT_ORIGIN = 'http://localhost:5173';
 
-const connectDB = require('../config/db');
+const { connectTestDB } = require('./_testDb');
 const env = require('../config/env');
 const app = require('../app');
 const User = require('../models/User');
@@ -105,7 +105,7 @@ async function registerTenant(label) {
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
-  const user = await User.findOne({ email });
+  const user = await User.findOneAndUpdate({ email }, { $set: { emailVerified: true } }, { new: true });
   const business = await Business.findById(user.businessId);
   createdBusinessIds.push(user.businessId);
   await Business.updateOne(
@@ -216,7 +216,7 @@ async function assertPaused(tenant) {
 
 describe('billing required, security and AI removal', { timeout: 300000 }, () => {
   before(async () => {
-    await connectDB();
+    await connectTestDB();
     razorpayService.setClientForTests(fakeClient());
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

@@ -125,6 +125,28 @@ const resetPasswordLimiter = rateLimit({
   },
 });
 
+const verifyEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Too many verification attempts. Please wait a few minutes and try again.',
+  },
+});
+
+// Runs after protect, so each account gets its own small allowance of verification emails.
+const resendVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${req.user._id}`,
+  message: {
+    message: 'Too many verification emails requested. Please wait a while and try again.',
+  },
+});
+
 module.exports = authLimiter;
 module.exports.writeLimiter = writeLimiter;
 module.exports.exportLimiter = exportLimiter;
@@ -137,3 +159,5 @@ module.exports.publicEventLimiter = publicEventLimiter;
 module.exports.cronLimiter = cronLimiter;
 module.exports.forgotPasswordLimiter = forgotPasswordLimiter;
 module.exports.resetPasswordLimiter = resetPasswordLimiter;
+module.exports.verifyEmailLimiter = verifyEmailLimiter;
+module.exports.resendVerificationLimiter = resendVerificationLimiter;

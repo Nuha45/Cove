@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { protect } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/requireVerifiedEmail');
 const { writeLimiter, exportLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const {
@@ -27,7 +28,7 @@ const bulkRules = [
     .withMessage('Choose a valid bulk action.'),
 ];
 
-router.use(protect);
+router.use(protect, requireVerifiedEmail);
 router.get('/', listRules, validate, productController.list);
 router.post('/', writeLimiter, createRules, validate, productController.create);
 router.get('/inventory', requireAdvanced, productController.inventory);

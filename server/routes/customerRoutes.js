@@ -1,5 +1,6 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/requireVerifiedEmail');
 const { writeLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 const {
@@ -12,7 +13,7 @@ const customerController = require('../controllers/customerController');
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, requireVerifiedEmail);
 router.get('/', listRules, validate, customerController.list);
 router.get('/:id', idRule, validate, customerController.getOne);
 router.get('/:id/orders', orderListRules, validate, customerController.listOrders);

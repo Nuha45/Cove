@@ -5484,6 +5484,13 @@ a.store-link, .store-link {
 @media (max-width: 430px) {
   .plan-banner .primary { width: 100%; justify-content: center; }
 }
+.email-verification-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .sr-only {
   position: absolute;
   width: 1px;

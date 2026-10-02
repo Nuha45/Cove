@@ -91,7 +91,7 @@ async function notifyNewOrder({ businessId, order }) {
       dedupeKey: `NEW_ORDER:${publicOrder.id || order._id}`,
     });
 
-    if (prefs(business).emailNewOrders) {
+    if (prefs(business).emailNewOrders && owner.isEmailVerified()) {
       await emailService.sendSellerNewOrder({
         to: owner.email,
         businessName: business.name,
@@ -126,7 +126,7 @@ async function notifyPaymentSubmitted({ businessId, order }) {
       dedupeKey: `PAYMENT_SUBMITTED:${orderId}:${publicOrder.paymentReference || 'none'}`,
     });
 
-    if (prefs(business).emailPayments) {
+    if (prefs(business).emailPayments && owner.isEmailVerified()) {
       await emailService.sendSellerPaymentSubmitted({
         to: owner.email,
         businessName: business.name,
@@ -244,7 +244,7 @@ async function notifyCustomerWant({ businessId, wantId, preview }) {
       dedupeKey: `CUSTOMER_WANT:${wantId}`,
     });
 
-    if (prefs(business).emailCustomerWants) {
+    if (prefs(business).emailCustomerWants && owner.isEmailVerified()) {
       await emailService.sendSellerCustomerWant({
         to: owner.email,
         businessName: business.name,
@@ -284,7 +284,7 @@ async function notifyLowStock({ businessId, orderId, changes }) {
       dedupeKey: `LOW_STOCK:${change.productId}:${orderId}`,
     })));
 
-    if (!prefs(business).emailLowStock) return;
+    if (!prefs(business).emailLowStock || !owner.isEmailVerified()) return;
     const billingService = require('./billingService');
     if (!(await billingService.hasAdvancedAccess(businessId))) return;
 

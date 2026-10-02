@@ -3,6 +3,7 @@ import { Copy, ExternalLink } from 'lucide-react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
+import ResendVerificationButton from '../components/layout/ResendVerificationButton';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
 import { CATEGORIES } from '../utils/categories';
 import { CURRENCIES } from '../utils/currencies';
@@ -110,7 +111,7 @@ function toForm(business) {
 }
 
 export default function SettingsPage() {
-  const { refresh } = useAuth();
+  const { user, refresh } = useAuth();
   const { notify, plan } = useOutletContext();
   const advanced = Boolean(plan?.advanced);
   const [searchParams] = useSearchParams();
@@ -695,6 +696,20 @@ export default function SettingsPage() {
 
           {tab === 'Notifications' ? (
             <div className="form-grid">
+              <div className="wide settings-toggle">
+                <span>
+                  <strong>Account email</strong>
+                  <small className="muted">{user?.email}</small>
+                </span>
+                {user?.emailVerified === false ? (
+                  <span className="email-verification-status">
+                    <span className="badge orange">Email verification required</span>
+                    <ResendVerificationButton onResult={notify} />
+                  </span>
+                ) : (
+                  <span className="badge green">Email verified</span>
+                )}
+              </div>
               <p className="muted wide">
                 These emails go to your Cove account email. In-app notifications always appear in the bell menu.
               </p>

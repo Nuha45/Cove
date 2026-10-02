@@ -76,9 +76,18 @@ const resetPasswordRules = [
     }),
 ];
 
+const verifyEmailRules = [
+  body('token')
+    .isString()
+    .trim()
+    .isLength({ min: 32, max: 200 })
+    .withMessage('This verification link is invalid or has already been used.'),
+];
+
 module.exports = {
   registerRules,
   loginRules,
   forgotPasswordRules,
   resetPasswordRules,
+  verifyEmailRules,
 };

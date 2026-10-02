@@ -1,4 +1,5 @@
 const Subscription = require('../models/Subscription');
+const User = require('../models/User');
 const env = require('../config/env');
 const ApiError = require('../utils/ApiError');
 const { PLANS, PLAN_KEYS, TRIAL_DAYS, getPlan } = require('../utils/covePlan');
@@ -139,25 +140,45 @@ function accessState(subscription, now = new Date()) {
   return subscription?.trialEndAt && !everPaid ? 'trial_ended' : 'billing_required';
 }
 
+const EMAIL_UNVERIFIED = 'email_unverified';
+const SELLER_UNVERIFIED_MESSAGE = 'Please verify your email address to continue.';
+
+// A shop stays closed until its owner verifies their email. Only new signups are ever stored as false.
+async function ownerUnverified(businessId) {
+  return Boolean(await User.exists({ businessId, emailVerified: false }));
+}
+
 // Billing required: the public store and new orders stop. Seller data is never touched.
 async function isStorePaused(businessId, now = new Date()) {
+  if (await ownerUnverified(businessId)) return true;
   if (!env.enforceBilling) return false;
   const subscription = await Subscription.findOne({ businessId }).select(ENTITLEMENT_FIELDS).lean();
   return storePausedFor(subscription, now);
 }
 
 async function pausedBusinessIds(businessIds, now = new Date()) {
-  if (!env.enforceBilling || !businessIds.length) return new Set();
+  if (!businessIds.length) return new Set();
+  const unverified = await User.distinct('businessId', {
+    businessId: { $in: businessIds },
+    emailVerified: false,
+  });
+  const paused = new Set(unverified.map(String));
+  if (!env.enforceBilling) return paused;
   const subscriptions = await Subscription.find({ businessId: { $in: businessIds } })
     .select(`businessId ${ENTITLEMENT_FIELDS}`)
     .lean();
   const byBusiness = new Map(subscriptions.map((item) => [String(item.businessId), item]));
-  return new Set(
-    businessIds.map(String).filter((id) => storePausedFor(byBusiness.get(id), now))
-  );
+  businessIds.map(String)
+    .filter((id) => storePausedFor(byBusiness.get(id), now))
+    .forEach((id) => paused.add(id));
+  return paused;
 }
 
 async function assertStoreOpen(businessId, { audience = 'public' } = {}) {
+  if (await ownerUnverified(businessId)) {
+    const message = audience === 'seller' ? SELLER_UNVERIFIED_MESSAGE : PUBLIC_PAUSED_MESSAGE;
+    throw new ApiError(403, message, [{ field: 'store', message: EMAIL_UNVERIFIED }]);
+  }
   if (!env.enforceBilling) return;
   const now = new Date();
   const subscription = await Subscription.findOne({ businessId })

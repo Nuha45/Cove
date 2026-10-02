@@ -12,6 +12,12 @@ const env = require('../config/env');
 const BCRYPT_ROUNDS = 12;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const GENERIC_RESET_MESSAGE = 'If an account exists for this email, a password reset link has been sent.';
+const VERIFY_TTL_HOURS = 24;
+const VERIFY_TTL_MS = VERIFY_TTL_HOURS * 60 * 60 * 1000;
+const GENERIC_RESEND_MESSAGE = 'If your email address still needs verification, a new link has been sent.';
+const VERIFY_SUCCESS_MESSAGE = 'Your email address is verified.';
+const VERIFY_INVALID_MESSAGE = 'This verification link is invalid or has already been used.';
+const VERIFY_EXPIRED_MESSAGE = 'This verification link has expired. Log in to request a new one.';
 const ARCHIVED_MESSAGE = 'This shop has been archived. Contact Cove support if you want it restored.';
 let dummyHashPromise;
 
@@ -55,8 +61,9 @@ async function register(input) {
     }
   }
 
+  let user;
   try {
-    const user = await User.create({
+    user = await User.create({
       _id: userId,
       name: input.name,
       email: input.email,
@@ -64,11 +71,10 @@ async function register(input) {
       role: 'owner',
       isPlatformAdmin: false,
       businessId,
+      emailVerified: false,
     });
     // One server-side trial per new business. Never trust client trial dates.
     await billingService.createTrialForBusiness(businessId);
-    const token = signToken(user);
-    return { user, business, token };
   } catch (err) {
     await Business.deleteOne({ _id: businessId });
     const Subscription = require('../models/Subscription');
@@ -78,6 +84,74 @@ async function register(input) {
     }
     throw err;
   }
+
+  // The account exists either way; a failed send is recoverable with "Resend verification email".
+  await issueEmailVerification(user).catch((err) => {
+    console.error('[auth] could not issue verification email', err.message || err);
+  });
+  return { user, business, token: signToken(user) };
+}
+
+function verificationUrl(rawToken) {
+  return `${env.appUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(rawToken)}`;
+}
+
+// Replaces any earlier token, so only the most recent link works.
+async function issueEmailVerification(user) {
+  const rawToken = emailService.createResetToken();
+  const updated = await User.findOneAndUpdate(
+    { _id: user._id, emailVerified: false },
+    {
+      $set: {
+        emailVerificationTokenHash: emailService.hashResetToken(rawToken),
+        emailVerificationExpiresAt: new Date(Date.now() + VERIFY_TTL_MS),
+      },
+    },
+    { new: true }
+  );
+  if (!updated) return { sent: false };
+
+  const result = await emailService.sendEmailVerification({
+    to: updated.email,
+    name: updated.name,
+    verifyUrl: verificationUrl(rawToken),
+    expiresInHours: VERIFY_TTL_HOURS,
+  });
+  return { sent: Boolean(result.ok) };
+}
+
+async function verifyEmail(token) {
+  const raw = String(token || '').trim();
+  if (raw.length < 32 || raw.length > 200) {
+    throw new ApiError(400, VERIFY_INVALID_MESSAGE, [{ field: 'token', message: 'token_invalid' }]);
+  }
+  const tokenHash = emailService.hashResetToken(raw);
+
+  // Atomic match-and-clear makes the token single use even under concurrent clicks.
+  const verified = await User.findOneAndUpdate(
+    { emailVerificationTokenHash: tokenHash, emailVerificationExpiresAt: { $gt: new Date() } },
+    {
+      $set: { emailVerified: true, emailVerifiedAt: new Date() },
+      $unset: { emailVerificationTokenHash: 1, emailVerificationExpiresAt: 1 },
+    },
+    { new: true }
+  );
+  if (verified) {
+    return { message: VERIFY_SUCCESS_MESSAGE, verified: true };
+  }
+
+  const expired = await User.exists({ emailVerificationTokenHash: tokenHash });
+  if (expired) {
+    throw new ApiError(400, VERIFY_EXPIRED_MESSAGE, [{ field: 'token', message: 'token_expired' }]);
+  }
+  throw new ApiError(400, VERIFY_INVALID_MESSAGE, [{ field: 'token', message: 'token_invalid' }]);
+}
+
+async function resendEmailVerification(user) {
+  if (!user.isEmailVerified()) {
+    await issueEmailVerification(user);
+  }
+  return { message: GENERIC_RESEND_MESSAGE };
 }
 
 async function login({ email, password }) {
@@ -192,5 +266,9 @@ module.exports = {
   revokeToken,
   requestPasswordReset,
   resetPassword,
+  verifyEmail,
+  resendEmailVerification,
   GENERIC_RESET_MESSAGE,
+  GENERIC_RESEND_MESSAGE,
+  VERIFY_TTL_MS,
 };

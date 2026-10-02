@@ -65,9 +65,11 @@ const notificationSchema = new mongoose.Schema(
 );
 
 notificationSchema.index({ businessId: 1, userId: 1, createdAt: -1 });
+// Unique only for non-empty keys, so notifications without a dedupe key never collide.
+// MongoDB rejects combining sparse with partialFilterExpression; the filter alone covers it.
 notificationSchema.index(
   { businessId: 1, dedupeKey: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { dedupeKey: { $type: 'string', $gt: '' } } }
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string', $gt: '' } } }
 );
 
 notificationSchema.methods.toPublic = function toPublic() {

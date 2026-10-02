@@ -2,7 +2,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const mongoose = require('mongoose');
-const connectDB = require('../config/db');
+const { connectTestDB } = require('./_testDb');
 const app = require('../app');
 const User = require('../models/User');
 const Business = require('../models/Business');
@@ -57,7 +57,7 @@ async function registerTenant(label, extraBody = {}) {
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
-  const user = await User.findOne({ email });
+  const user = await User.findOneAndUpdate({ email }, { $set: { emailVerified: true } }, { new: true });
   const business = await Business.findById(user.businessId);
   createdBusinessIds.push(user.businessId);
   return {
@@ -101,7 +101,7 @@ describe('admin', { timeout: 180000 }, () => {
   let other;
 
   before(async () => {
-    await connectDB();
+    await connectTestDB();
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     base = `http://127.0.0.1:${server.address().port}`;

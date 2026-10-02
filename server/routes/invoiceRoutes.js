@@ -1,6 +1,7 @@
 const express = require('express');
 const { param, query } = require('express-validator');
 const { protect } = require('../middleware/auth');
+const { requireVerifiedEmail } = require('../middleware/requireVerifiedEmail');
 const { requireAdvanced } = require('../middleware/requireAdvanced');
 const validate = require('../middleware/validate');
 const invoiceController = require('../controllers/invoiceController');
@@ -14,7 +15,7 @@ const listRules = [
 ];
 const idRule = [param('id').isMongoId().withMessage('We could not find that invoice.')];
 
-router.use(protect, requireAdvanced);
+router.use(protect, requireVerifiedEmail, requireAdvanced);
 router.get('/', listRules, validate, invoiceController.list);
 router.get('/:id/pdf', idRule, validate, invoiceController.getPdf);
 
