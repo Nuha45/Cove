@@ -6,7 +6,8 @@ import PageIntro from '../components/ui/PageIntro';
 import ResendVerificationButton from '../components/layout/ResendVerificationButton';
 import PaymentCurrencyNote, { PaymentCurrencyInfo } from '../components/settings/PaymentCurrencyNote';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
-import { CATEGORIES } from '../utils/categories';
+import CategoryField from '../components/ui/CategoryField';
+import { categoryError } from '../utils/categories';
 import { CURRENCIES } from '../utils/currencies';
 import { formatEyebrowDate, formatPrice, initials } from '../utils/display';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
@@ -231,6 +232,8 @@ export default function SettingsPage() {
   function clientErrors() {
     const next = {};
     if (form.name.trim().length < 2) next.name = 'Please enter your business name.';
+    const category = categoryError(form.category);
+    if (category) next.category = category;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim().toLowerCase())) {
       next.slug = 'Use lowercase letters, numbers, and hyphens only.';
     }
@@ -285,7 +288,7 @@ export default function SettingsPage() {
       const result = await updateBusinessSettings({
         name: form.name.trim(),
         slug: form.slug.trim().toLowerCase(),
-        category: form.category,
+        category: form.category.trim().replace(/\s+/g, ' '),
         description: form.description.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
@@ -415,12 +418,12 @@ export default function SettingsPage() {
                   <input name="name" value={form.name} onChange={update} required maxLength={80} />
                   {errors.name ? <span className="field-error">{errors.name}</span> : null}
                 </label>
-                <label>
-                  Business category
-                  <select name="category" value={form.category} onChange={update}>
-                    {CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                </label>
+                <CategoryField
+                  className="wide"
+                  value={form.category}
+                  onChange={(category) => setForm((current) => ({ ...current, category }))}
+                  error={errors.category}
+                />
                 <label className="wide">
                   Description
                   <textarea name="description" value={form.description} onChange={update} maxLength={300} rows={3} placeholder="A short line about your business." />

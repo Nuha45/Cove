@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { CATEGORIES } = require('../utils/categories');
+const { CATEGORY_MIN, CATEGORY_MAX, CATEGORY_PATTERN } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
 const { normalizeUpiId } = require('../utils/upi');
 const {
@@ -34,7 +34,10 @@ const businessSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: CATEGORIES,
+      trim: true,
+      minlength: CATEGORY_MIN,
+      maxlength: CATEGORY_MAX,
+      match: CATEGORY_PATTERN,
     },
     description: {
       type: String,

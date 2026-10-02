@@ -55,6 +55,7 @@ async function registerTenant(label) {
       password,
       businessName: `${label} Shop ${stamp.slice(-6)}`,
       category: 'Jewelry & Accessories',
+      phone: '9876543210',
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
@@ -295,6 +296,60 @@ describe('businessSettings', { timeout: 180000 }, () => {
       token: owner.token,
       body: { storefrontActive: true, pickupEnabled: true, deliveryEnabled: true },
     });
+  });
+
+  it('lets sellers type their own store type and rejects unsafe or empty ones', async () => {
+    const email = uniqueEmail('custom-type');
+    const registered = await api('POST', '/api/auth/register', {
+      body: {
+        name: 'Custom Owner',
+        email,
+        password,
+        businessName: `Custom Type Shop ${stamp.slice(-6)}`,
+        category: '  Handmade   Soap & Candles ',
+        phone: '9876543210',
+      },
+    });
+    assert.equal(registered.status, 201, JSON.stringify(registered.data));
+    const created = await User.findOne({ email });
+    createdBusinessIds.push(created.businessId);
+    assert.equal((await Business.findById(created.businessId)).category, 'Handmade Soap & Candles');
+
+    for (const category of ['<script>', 'x', 'a'.repeat(41), '', ['Art'], { $ne: '' }]) {
+      const rejected = await api('POST', '/api/auth/register', {
+        body: { name: 'Bad Type', email: uniqueEmail(`bad-${Math.random().toString(16).slice(2, 8)}`), password, businessName: 'Bad Type Shop', category, phone: '9876543210' },
+      });
+      assert.equal(rejected.status, 400, `register accepted ${JSON.stringify(category)}`);
+    }
+
+    for (const category of ['Mehendi Artist', 'Café & Bakery', 'Jewelry & Accessories', 'हस्तशिल्प']) {
+      const saved = await api('PATCH', '/api/business/settings', { token: owner.token, body: { category } });
+      assert.equal(saved.status, 200, JSON.stringify(saved.data));
+      assert.equal(saved.data.business.category, category);
+    }
+    for (const category of ['<b>Shop</b>', 'a', 'a'.repeat(41), '{"$gt":""}']) {
+      const rejected = await api('PATCH', '/api/business/settings', { token: owner.token, body: { category } });
+      assert.equal(rejected.status, 400, `settings accepted ${category}`);
+    }
+    const store = await api('GET', `/api/store/${owner.slug}`);
+    assert.equal(store.data.business.category, 'हस्तशिल्प');
+  });
+
+  it('requires a valid phone number at signup and saves it on the shop', async () => {
+    const base = { name: 'Phone Owner', password, businessName: 'Phone Shop', category: 'Henna' };
+    for (const phone of [undefined, '', '   ', 'abc', '12', ['9876543210'], { $ne: '' }]) {
+      const email = uniqueEmail(`phone-${Math.random().toString(16).slice(2, 8)}`);
+      const rejected = await api('POST', '/api/auth/register', { body: { ...base, email, phone } });
+      assert.equal(rejected.status, 400, `register accepted phone ${JSON.stringify(phone)}`);
+      assert.equal(await User.countDocuments({ email }), 0);
+    }
+
+    const email = uniqueEmail('phone-ok');
+    const registered = await api('POST', '/api/auth/register', { body: { ...base, email, phone: ' +91 98765 43210 ' } });
+    assert.equal(registered.status, 201, JSON.stringify(registered.data));
+    const created = await User.findOne({ email });
+    createdBusinessIds.push(created.businessId);
+    assert.equal((await Business.findById(created.businessId)).phone, '+91 98765 43210');
   });
 
   it('keeps stored product prices unchanged when the store currency changes', async () => {

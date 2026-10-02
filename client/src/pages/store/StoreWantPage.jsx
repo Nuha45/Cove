@@ -213,10 +213,15 @@ export default function StoreWantPage() {
                 onChange={update}
               />
               <span>
-                <strong>I’m okay with this request being shown anonymously on this shop’s request board.</strong>
+                <strong>Also post my idea on the shop’s request board (anonymous)</strong>
                 <small>
-                  Your name, phone, email, and notes stay private. The shop must still approve it before it appears.
-                  Unchecked by default.
+                  The request board is a public list of things shoppers want this shop to make or stock. Other
+                  shoppers can tap “I’m interested too” — the more people who want it, the more likely the shop
+                  is to add it.
+                </small>
+                <small>
+                  Only what you’re looking for is shown, and the shop may tidy the wording before approving it. Your
+                  name, phone, email and notes are never shown. Leave this unticked to send your request privately.
                 </small>
               </span>
             </label>

@@ -1964,6 +1964,24 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 .field-error { display: block; margin-top: 6px; font-weight: 600; }
 .form-error { background: #f9e9e7; border-radius: 8px; padding: 10px 12px; }
 .hint { color: var(--muted); font-size: 11px; font-weight: 500; }
+.category-field { display: grid; gap: 8px; min-width: 0; }
+.category-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.category-chip {
+  min-height: 0;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: #5a534b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.category-chip:hover { border-color: #f2b58f; background: #fffaf6; }
+.category-chip.selected { border-color: var(--orange-dark); background: var(--soft-orange); color: #9c4a22; }
+.category-chip.more { border-style: dashed; color: var(--orange-dark); }
+.category-chip:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 .auth-footer { margin: 18px 0 0; font-size: 12px; color: var(--muted); }
 .auth-footer a { color: var(--orange-dark); font-weight: 700; }
 .auth-legal { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); text-align: center; }

@@ -1,5 +1,5 @@
 const { body } = require('express-validator');
-const { CATEGORIES } = require('../utils/categories');
+const { CATEGORY_MIN, CATEGORY_MAX, CATEGORY_PATTERN } = require('../utils/categories');
 const { CURRENCIES } = require('../utils/currencies');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 const { isAcceptedImageValue } = require('../utils/imageUpload');
@@ -67,8 +67,15 @@ const updateSettingsRules = [
     .withMessage('Storefront link must be between 2 and 48 characters.'),
   body('category')
     .optional()
-    .isIn(CATEGORIES)
-    .withMessage('Please choose a valid category.'),
+    .isString()
+    .withMessage('Please choose or type your store type.')
+    .bail()
+    .trim()
+    .customSanitizer((value) => value.replace(/\s+/g, ' '))
+    .isLength({ min: CATEGORY_MIN, max: CATEGORY_MAX })
+    .withMessage(`Store type must be between ${CATEGORY_MIN} and ${CATEGORY_MAX} characters.`)
+    .matches(CATEGORY_PATTERN)
+    .withMessage('Use letters, numbers, spaces and simple punctuation for your store type.'),
   body('description')
     .optional()
     .trim()

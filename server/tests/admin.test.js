@@ -58,6 +58,7 @@ async function registerTenant(label, extraBody = {}) {
       password,
       businessName: `${label} Shop ${stamp.slice(-6)}`,
       category: 'Jewelry & Accessories',
+      phone: '9876543210',
       ...extraBody,
     },
   });

@@ -1,5 +1,5 @@
 const { body } = require('express-validator');
-const { CATEGORIES } = require('../utils/categories');
+const { CATEGORY_MIN, CATEGORY_MAX, CATEGORY_PATTERN } = require('../utils/categories');
 
 const emailRule = body('email')
   .trim()
@@ -34,13 +34,25 @@ const registerRules = [
     .isLength({ min: 2, max: 80 })
     .withMessage('Business name must be between 2 and 80 characters.'),
   body('category')
-    .isIn(CATEGORIES)
-    .withMessage('Please choose a business category.'),
-  body('phone')
-    .optional({ values: 'falsy' })
+    .isString()
+    .withMessage('Please choose or type your store type.')
+    .bail()
     .trim()
-    .isLength({ max: 20 })
-    .withMessage('Phone number is too long.'),
+    .customSanitizer((value) => value.replace(/\s+/g, ' '))
+    .isLength({ min: CATEGORY_MIN, max: CATEGORY_MAX })
+    .withMessage(`Store type must be between ${CATEGORY_MIN} and ${CATEGORY_MAX} characters.`)
+    .matches(CATEGORY_PATTERN)
+    .withMessage('Use letters, numbers, spaces and simple punctuation for your store type.'),
+  body('phone')
+    .isString()
+    .withMessage('Please enter your phone number.')
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage('Please enter your phone number.')
+    .bail()
+    .matches(/^[+0-9][0-9\s()-]{6,19}$/)
+    .withMessage('Please enter a valid phone number.'),
   body('city')
     .optional({ values: 'falsy' })
     .trim()

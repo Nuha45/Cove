@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../layouts/AuthLayout';
 import PasswordField from '../components/ui/PasswordField';
 import { useAuth } from '../context/AuthContext';
-import { CATEGORIES } from '../utils/categories';
+import CategoryField from '../components/ui/CategoryField';
+import { categoryError } from '../utils/categories';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
 
 const emptyForm = {
@@ -12,7 +13,7 @@ const emptyForm = {
   password: '',
   confirmPassword: '',
   businessName: '',
-  category: 'Jewelry & Accessories',
+  category: '',
   phone: '',
   city: '',
 };
@@ -28,7 +29,11 @@ function localErrors(form) {
   }
   if (form.password !== form.confirmPassword) errors.confirmPassword = 'Passwords do not match.';
   if (form.businessName.trim().length < 2) errors.businessName = 'Please enter your business name.';
-  if (!CATEGORIES.includes(form.category)) errors.category = 'Please choose a category.';
+  const category = categoryError(form.category);
+  if (category) errors.category = category;
+  const phone = form.phone.trim();
+  if (!phone) errors.phone = 'Please enter your phone number.';
+  else if (!/^[+0-9][0-9\s()-]{6,19}$/.test(phone)) errors.phone = 'Please enter a valid phone number.';
   return errors;
 }
 
@@ -58,7 +63,7 @@ export default function RegisterPage() {
         email: form.email.trim(),
         password: form.password,
         businessName: form.businessName.trim(),
-        category: form.category,
+        category: form.category.trim().replace(/\s+/g, ' '),
         phone: form.phone.trim(),
         city: form.city.trim(),
       });
@@ -85,12 +90,12 @@ export default function RegisterPage() {
         {formError ? <div className="form-error">{formError}</div> : null}
         <label>
           Your name
-          <input name="name" autoComplete="name" value={form.name} onChange={update} placeholder="Aisha Shah" />
+          <input name="name" autoComplete="name" value={form.name} onChange={update} />
           {errors.name ? <span className="field-error">{errors.name}</span> : null}
         </label>
         <label>
           Email
-          <input name="email" type="email" autoComplete="email" value={form.email} onChange={update} placeholder="you@example.com" />
+          <input name="email" type="email" autoComplete="email" value={form.email} onChange={update} />
           {errors.email ? <span className="field-error">{errors.email}</span> : null}
         </label>
         <PasswordField
@@ -112,26 +117,22 @@ export default function RegisterPage() {
         />
         <label>
           Business name
-          <input name="businessName" value={form.businessName} onChange={update} placeholder="Zahra Jewelry" />
+          <input name="businessName" value={form.businessName} onChange={update} />
           {errors.businessName ? <span className="field-error">{errors.businessName}</span> : null}
         </label>
+        <CategoryField
+          value={form.category}
+          onChange={(category) => setForm((current) => ({ ...current, category }))}
+          error={errors.category}
+        />
         <label>
-          Business category
-          <select name="category" value={form.category} onChange={update}>
-            {CATEGORIES.map((category) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-          {errors.category ? <span className="field-error">{errors.category}</span> : null}
-        </label>
-        <label>
-          Phone number <span className="hint">optional</span>
-          <input name="phone" value={form.phone} onChange={update} placeholder="+91 98765 43210" />
+          Phone number
+          <input name="phone" type="tel" autoComplete="tel" value={form.phone} onChange={update} />
           {errors.phone ? <span className="field-error">{errors.phone}</span> : null}
         </label>
         <label>
           City <span className="hint">optional</span>
-          <input name="city" value={form.city} onChange={update} placeholder="Bengaluru" />
+          <input name="city" autoComplete="address-level2" value={form.city} onChange={update} />
           {errors.city ? <span className="field-error">{errors.city}</span> : null}
         </label>
         <button className="primary" type="submit" disabled={submitting}>

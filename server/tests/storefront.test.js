@@ -53,6 +53,7 @@ async function registerTenant(label) {
       password,
       businessName: `${label} Jewelry ${stamp.slice(-6)}`,
       category: 'Jewelry & Accessories',
+      phone: '9876543210',
     },
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.data));
