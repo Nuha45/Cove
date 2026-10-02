@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import BusinessActionDialog from './BusinessActionDialog';
-import { deleteAdminBusiness } from '../../services/adminService';
+import { deleteAdminBusiness, setAdminBusinessOwnerAdmin } from '../../services/adminService';
 
 vi.mock('../../services/adminService', () => ({
   archiveAdminBusiness: vi.fn(),
   restoreAdminBusiness: vi.fn(),
   deleteAdminBusiness: vi.fn(),
+  setAdminBusinessOwnerAdmin: vi.fn(),
 }));
 
 const BUSINESS = { id: '64b000000000000000000001', name: 'Nuha Jewelry', slug: 'nuha-jewelry' };
@@ -85,5 +86,58 @@ describe('BusinessActionDialog delete seller account', () => {
     expect(deleteButton().disabled).toBe(false);
     rerender(<BusinessActionDialog business={{ ...BUSINESS, slug: 'nuha-gems' }} mode="delete" {...handlers} />);
     expect(deleteButton().disabled).toBe(true);
+  });
+});
+
+describe('BusinessActionDialog admin access', () => {
+  const OWNED = { ...BUSINESS, owner: { name: 'Friend', email: 'friend@example.com', isPlatformAdmin: false } };
+
+  function renderAdmin(mode) {
+    const handlers = { onClose: vi.fn(), onDone: vi.fn(), onFailed: vi.fn() };
+    render(<BusinessActionDialog business={OWNED} mode={mode} {...handlers} />);
+    return handlers;
+  }
+
+  it('requires the owner email before granting admin access and sends grant=true', async () => {
+    vi.mocked(setAdminBusinessOwnerAdmin).mockResolvedValue({ business: OWNED });
+    const handlers = renderAdmin('grantAdmin');
+    const button = screen.getByRole('button', { name: 'Grant admin access' });
+    expect(screen.getByText(/open the Admin panel/)).toBeTruthy();
+    expect(button.disabled).toBe(true);
+    typeSlug('friend@example');
+    expect(button.disabled).toBe(true);
+    typeSlug('Friend@Example.com');
+    expect(button.disabled).toBe(false);
+    expect(setAdminBusinessOwnerAdmin).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(setAdminBusinessOwnerAdmin).toHaveBeenCalledWith(BUSINESS.id, { grant: true, confirmEmail: 'Friend@Example.com' });
+    expect(handlers.onDone).toHaveBeenCalledWith('grantAdmin', { business: OWNED });
+  });
+
+  it('sends grant=false when removing admin access', async () => {
+    vi.mocked(setAdminBusinessOwnerAdmin).mockResolvedValue({ business: OWNED });
+    renderAdmin('revokeAdmin');
+    expect(screen.getByText(/lose the Admin panel immediately/)).toBeTruthy();
+    typeSlug('friend@example.com');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove admin access' }));
+    });
+    expect(setAdminBusinessOwnerAdmin).toHaveBeenCalledWith(BUSINESS.id, { grant: false, confirmEmail: 'friend@example.com' });
+  });
+
+  it('shows the server refusal instead of assuming the change worked', async () => {
+    vi.mocked(setAdminBusinessOwnerAdmin).mockRejectedValue({
+      response: { status: 403, data: { message: 'You do not have access to this area.' } },
+    });
+    const handlers = renderAdmin('grantAdmin');
+    typeSlug('friend@example.com');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Grant admin access' }));
+    });
+    expect(screen.getByText('You do not have access to this area.')).toBeTruthy();
+    expect(handlers.onDone).not.toHaveBeenCalled();
+    expect(handlers.onFailed).toHaveBeenCalledWith('grantAdmin');
   });
 });

@@ -229,7 +229,7 @@ function parseBusinessId(id) {
   return id;
 }
 
-async function getBusinessDetail(id, now = new Date()) {
+async function getBusinessDetail(id, now = new Date(), viewer = null) {
   const business = await Business.findById(parseBusinessId(id))
     .select('name slug category city storefrontActive archivedAt createdAt ownerId')
     .lean();
@@ -248,7 +248,7 @@ async function getBusinessDetail(id, now = new Date()) {
     lastProduct,
     lastWant,
   ] = await Promise.all([
-    User.findOne({ _id: business.ownerId, businessId }).select('name email createdAt').lean(),
+    User.findOne({ _id: business.ownerId, businessId }).select('name email createdAt isPlatformAdmin').lean(),
     Subscription.findOne({ businessId }).select(SUBSCRIPTION_FIELDS).lean(),
     Product.countDocuments({ businessId }),
     Product.countDocuments({ businessId, status: 'Active' }),
@@ -275,7 +275,15 @@ async function getBusinessDetail(id, now = new Date()) {
     storefrontActive: business.storefrontActive !== false,
     archivedAt: business.archivedAt || null,
     createdAt: business.createdAt,
-    owner: owner ? { name: owner.name, email: owner.email, createdAt: owner.createdAt } : null,
+    owner: owner
+      ? {
+        name: owner.name,
+        email: owner.email,
+        createdAt: owner.createdAt,
+        isPlatformAdmin: owner.isPlatformAdmin === true,
+        isYou: Boolean(viewer && String(viewer._id) === String(owner._id)),
+      }
+      : null,
     subscription: subscriptionSummary(subscription, now),
     lastActivity,
     counts: {
@@ -309,7 +317,7 @@ async function archiveBusiness(id, admin, now = new Date()) {
     // Sign the owner out everywhere; login is refused while the shop is archived.
     await User.updateMany({ businessId: business._id }, { $inc: { tokenVersion: 1 } });
   }
-  return getBusinessDetail(business._id.toString(), now);
+  return getBusinessDetail(business._id.toString(), now, admin);
 }
 
 async function restoreBusiness(id, admin, now = new Date()) {
@@ -318,7 +326,7 @@ async function restoreBusiness(id, admin, now = new Date()) {
     business.archivedAt = null;
     await business.save();
   }
-  return getBusinessDetail(business._id.toString(), now);
+  return getBusinessDetail(business._id.toString(), now, admin);
 }
 
 // Permanent. Only allowed once the shop is archived and the admin retypes the shop link.
@@ -370,6 +378,39 @@ async function deleteBusiness(id, admin, { confirmSlug } = {}) {
   };
 }
 
+// Grants or revokes platform admin for a shop's owner. The caller is already a database-checked
+// admin (requireAdmin); the owner's email must be retyped so a stale page cannot change the wrong
+// account. Admins cannot change their own flag, so there is always at least one admin left.
+async function setOwnerPlatformAdmin(id, admin, { grant, confirmEmail } = {}, now = new Date()) {
+  if (typeof grant !== 'boolean') {
+    throw new ApiError(400, 'Choose whether to grant or remove admin access.');
+  }
+  const business = await Business.findById(parseBusinessId(id)).select('ownerId archivedAt').lean();
+  if (!business) throw new ApiError(404, 'We could not find that business.');
+  const owner = await User.findOne({ _id: business.ownerId, businessId: business._id })
+    .select('email emailVerified isPlatformAdmin')
+    .lean();
+  if (!owner) throw new ApiError(404, 'This shop has no owner account.');
+  if (String(owner._id) === String(admin._id)) {
+    throw new ApiError(400, 'You cannot change your own admin access.');
+  }
+  if (typeof confirmEmail !== 'string' || confirmEmail.trim().toLowerCase() !== owner.email) {
+    throw new ApiError(400, "Type the owner's email exactly to confirm.", [
+      { field: 'confirmEmail', message: "Type the owner's email exactly to confirm." },
+    ]);
+  }
+  if (grant && business.archivedAt) {
+    throw new ApiError(400, 'Restore this shop before granting admin access.');
+  }
+  if (grant && owner.emailVerified === false) {
+    throw new ApiError(400, 'The owner must verify their email before they can become an admin.');
+  }
+  if (owner.isPlatformAdmin !== grant) {
+    await User.updateOne({ _id: owner._id }, { $set: { isPlatformAdmin: grant } });
+  }
+  return getBusinessDetail(String(business._id), now, admin);
+}
+
 module.exports = {
   getOverview,
   listBusinesses,
@@ -377,5 +418,6 @@ module.exports = {
   archiveBusiness,
   restoreBusiness,
   deleteBusiness,
+  setOwnerPlatformAdmin,
   MAX_PAGE_SIZE,
 };

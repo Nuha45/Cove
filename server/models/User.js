@@ -26,7 +26,8 @@ const userSchema = new mongoose.Schema(
       enum: ['owner'],
       default: 'owner',
     },
-    // Cove platform operator. Only settable via server/scripts/promote-admin.js, never via the API.
+    // Cove platform operator. Only set by an existing platform admin (POST /api/admin/businesses/:id/platform-admin)
+    // or server/scripts/promote-admin.js. Never accepted from a user's own registration or profile request.
     isPlatformAdmin: {
       type: Boolean,
       default: false,

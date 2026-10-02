@@ -16,7 +16,15 @@ const listBusinesses = asyncHandler(async (req, res) => {
 });
 
 const getBusiness = asyncHandler(async (req, res) => {
-  const business = await adminService.getBusinessDetail(req.params.id);
+  const business = await adminService.getBusinessDetail(req.params.id, new Date(), req.user);
+  res.json({ business });
+});
+
+const setOwnerPlatformAdmin = asyncHandler(async (req, res) => {
+  const business = await adminService.setOwnerPlatformAdmin(req.params.id, req.user, {
+    grant: req.body?.grant,
+    confirmEmail: req.body?.confirmEmail,
+  });
   res.json({ business });
 });
 
@@ -44,4 +52,5 @@ module.exports = {
   archiveBusiness,
   restoreBusiness,
   deleteBusiness,
+  setOwnerPlatformAdmin,
 };

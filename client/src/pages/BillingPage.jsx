@@ -121,6 +121,7 @@ export default function BillingPage() {
   const inTrial = Boolean(data?.trial?.active);
   const trialEnded = Boolean(data?.trial?.ended);
   const storePaused = Boolean(data?.store?.paused);
+  const billingExempt = data?.billingExempt === true;
   const trialEndedUnpaid = !inTrial && data?.access === 'trial_ended';
   const trialDays = data?.trial?.days || 7;
   const hasProvider = Boolean(subscription?.hasProviderSubscription);
@@ -236,7 +237,14 @@ export default function BillingPage() {
               </div>
             ) : null}
 
-            {status === 'incomplete' && !trialEnded && !trialEndedUnpaid && !storePaused ? (
+            {billingExempt ? (
+              <div className="billing-callout">
+                <strong>Platform admin account</strong>
+                <p>Cove billing is not required for this shop while you are a platform admin. Your store stays open without a plan.</p>
+              </div>
+            ) : null}
+
+            {status === 'incomplete' && !billingExempt && !trialEnded && !trialEndedUnpaid && !storePaused ? (
               <div className="billing-callout">
                 <strong>Payment required</strong>
                 <p>Choose a plan below. Your plan becomes active as soon as the payment is confirmed.</p>

@@ -103,17 +103,33 @@ function detachProviderSubscription(subscription) {
   subscription.lastProviderEventAt = null;
 }
 
+// Platform admins run Cove, so a shop with an admin member is never paused or plan-gated by
+// Cove billing. Read from the database on every check: revoking the flag restores normal billing
+// immediately. This is the only place billing exemption is decided.
+async function isBillingExempt(businessId) {
+  if (!businessId) return false;
+  return Boolean(await User.exists({ businessId, isPlatformAdmin: true }));
+}
+
+async function billingExemptBusinessIds(businessIds) {
+  if (!businessIds.length) return new Set();
+  const ids = await User.distinct('businessId', { businessId: { $in: businessIds }, isPlatformAdmin: true });
+  return new Set(ids.map(String));
+}
+
 // Read-only access check used by feature gates. Never creates billing rows.
 async function getPlanAccess(businessId) {
-  const subscription = await Subscription.findOne({ businessId })
-    .select(ENTITLEMENT_FIELDS)
-    .lean();
+  const [subscription, exempt] = await Promise.all([
+    Subscription.findOne({ businessId }).select(ENTITLEMENT_FIELDS).lean(),
+    isBillingExempt(businessId),
+  ]);
   const now = new Date();
   return {
     plan: subscription?.plan || 'pro',
     status: subscription?.status || 'incomplete',
     inTrial: inRunningTrial(subscription, now),
-    advanced: hasAdvancedFeatures(subscription, now),
+    advanced: exempt || hasAdvancedFeatures(subscription, now),
+    billingExempt: exempt,
   };
 }
 
@@ -152,6 +168,7 @@ async function ownerUnverified(businessId) {
 async function isStorePaused(businessId, now = new Date()) {
   if (await ownerUnverified(businessId)) return true;
   if (!env.enforceBilling) return false;
+  if (await isBillingExempt(businessId)) return false;
   const subscription = await Subscription.findOne({ businessId }).select(ENTITLEMENT_FIELDS).lean();
   return storePausedFor(subscription, now);
 }
@@ -164,12 +181,13 @@ async function pausedBusinessIds(businessIds, now = new Date()) {
   });
   const paused = new Set(unverified.map(String));
   if (!env.enforceBilling) return paused;
-  const subscriptions = await Subscription.find({ businessId: { $in: businessIds } })
-    .select(`businessId ${ENTITLEMENT_FIELDS}`)
-    .lean();
+  const [subscriptions, exempt] = await Promise.all([
+    Subscription.find({ businessId: { $in: businessIds } }).select(`businessId ${ENTITLEMENT_FIELDS}`).lean(),
+    billingExemptBusinessIds(businessIds),
+  ]);
   const byBusiness = new Map(subscriptions.map((item) => [String(item.businessId), item]));
   businessIds.map(String)
-    .filter((id) => storePausedFor(byBusiness.get(id), now))
+    .filter((id) => !exempt.has(id) && storePausedFor(byBusiness.get(id), now))
     .forEach((id) => paused.add(id));
   return paused;
 }
@@ -180,6 +198,7 @@ async function assertStoreOpen(businessId, { audience = 'public' } = {}) {
     throw new ApiError(403, message, [{ field: 'store', message: EMAIL_UNVERIFIED }]);
   }
   if (!env.enforceBilling) return;
+  if (await isBillingExempt(businessId)) return;
   const now = new Date();
   const subscription = await Subscription.findOne({ businessId })
     .select(`${ENTITLEMENT_FIELDS} currentPeriodStartAt`)
@@ -198,16 +217,18 @@ async function getBilling(businessId) {
   if (subscription.isModified('status')) await subscription.save();
 
   const currentPlan = subscription.plan || 'pro';
+  const exempt = await isBillingExempt(businessId);
   const running = inRunningTrial(subscription, now);
-  const ended = trialEnded(subscription, now);
-  const paused = storePausedFor(subscription, now);
-  const state = accessState(subscription, now);
+  const ended = !exempt && trialEnded(subscription, now);
+  const paused = !exempt && storePausedFor(subscription, now);
+  const state = exempt ? 'ok' : accessState(subscription, now);
   return {
     store: {
       paused,
       reason: paused ? state : null,
     },
     access: state,
+    billingExempt: exempt,
     plan: planPublic(currentPlan),
     plans: plansPublic(),
     subscription: subscription.toPublic(),
@@ -218,9 +239,9 @@ async function getBilling(businessId) {
       endsAt: subscription.trialEndAt,
     },
     entitlements: {
-      canUseCoveFeatures: canUseCoveFeatures(subscription, { enforce: env.enforceBilling, now }),
+      canUseCoveFeatures: exempt || canUseCoveFeatures(subscription, { enforce: env.enforceBilling, now }),
       enforceBilling: env.enforceBilling,
-      advanced: hasAdvancedFeatures(subscription, now),
+      advanced: exempt || hasAdvancedFeatures(subscription, now),
       inTrial: running,
       paid: hasPaidAccess(subscription, now),
       trialEnded: ended,
@@ -482,6 +503,8 @@ module.exports = {
   getBilling,
   getPlanAccess,
   hasAdvancedAccess,
+  isBillingExempt,
+  billingExemptBusinessIds,
   isStorePaused,
   pausedBusinessIds,
   assertStoreOpen,

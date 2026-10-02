@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Archive, ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
+import { Archive, ArrowLeft, RotateCcw, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
 import PageIntro from '../../components/ui/PageIntro';
 import Badge from '../../components/ui/Badge';
 import BusinessActionDialog from '../../components/admin/BusinessActionDialog';
@@ -177,6 +177,50 @@ export default function AdminBusinessDetailPage() {
               </dl>
             </section>
           </div>
+
+          {business.owner ? (
+            <section className="card detail-card">
+              <div className="admin-section-head">
+                <h2>Admin access</h2>
+                <Badge tone={business.owner.isPlatformAdmin ? 'blue' : 'neutral'}>
+                  {business.owner.isPlatformAdmin ? 'Platform admin' : 'Seller'}
+                </Badge>
+              </div>
+              {business.owner.isYou ? (
+                <p className="muted">This is your account. Another platform admin has to change your admin access.</p>
+              ) : business.owner.isPlatformAdmin ? (
+                <>
+                  <p className="muted">
+                    The owner can open the Admin panel, and this shop does not need a Cove plan. Removing access
+                    takes effect immediately.
+                  </p>
+                  <div className="admin-danger-actions">
+                    <button className="secondary" type="button" onClick={() => setActionMode('revokeAdmin')}>
+                      <ShieldOff size={15} aria-hidden="true" /> Remove admin access
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="muted">
+                    {business.archivedAt
+                      ? 'Restore this shop before granting its owner admin access.'
+                      : 'Give the owner of this shop access to the Admin panel. Their shop will no longer need a Cove plan.'}
+                  </p>
+                  <div className="admin-danger-actions">
+                    <button
+                      className="secondary"
+                      type="button"
+                      disabled={Boolean(business.archivedAt)}
+                      onClick={() => setActionMode('grantAdmin')}
+                    >
+                      <ShieldCheck size={15} aria-hidden="true" /> Make platform admin
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : null}
 
           <section className="card detail-card admin-danger-card">
             <div className="admin-section-head">

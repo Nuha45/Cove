@@ -20,6 +20,12 @@ export function restoreAdminBusiness(id) {
   return api.post(`/admin/businesses/${encodeURIComponent(id)}/restore`).then((res) => res.data);
 }
 
+export function setAdminBusinessOwnerAdmin(id, { grant, confirmEmail }) {
+  return api
+    .post(`/admin/businesses/${encodeURIComponent(id)}/platform-admin`, { grant, confirmEmail })
+    .then((res) => res.data);
+}
+
 export function deleteAdminBusiness(id, confirmSlug) {
   return api
     .delete(`/admin/businesses/${encodeURIComponent(id)}`, { data: { confirmSlug } })

@@ -13,5 +13,6 @@ router.get('/businesses/:id', adminController.getBusiness);
 router.post('/businesses/:id/archive', adminController.archiveBusiness);
 router.post('/businesses/:id/restore', adminController.restoreBusiness);
 router.delete('/businesses/:id', adminController.deleteBusiness);
+router.post('/businesses/:id/platform-admin', adminController.setOwnerPlatformAdmin);
 
 module.exports = router;

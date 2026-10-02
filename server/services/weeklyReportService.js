@@ -22,17 +22,22 @@ function previousWeek(now = new Date()) {
 }
 
 async function eligibleBusinessIds(now) {
-  const subscriptions = await Subscription.find({
-    $or: [
-      { status: 'trialing', trialEndAt: { $gt: now } },
-      { plan: 'advanced', status: { $in: [...ALLOWED] } },
-    ],
-  })
-    .select(`businessId ${ENTITLEMENT_FIELDS}`)
-    .lean();
-  return subscriptions
+  const [subscriptions, adminBusinessIds] = await Promise.all([
+    Subscription.find({
+      $or: [
+        { status: 'trialing', trialEndAt: { $gt: now } },
+        { plan: 'advanced', status: { $in: [...ALLOWED] } },
+      ],
+    })
+      .select(`businessId ${ENTITLEMENT_FIELDS}`)
+      .lean(),
+    // Platform admin shops are billing-exempt (see billingService.isBillingExempt).
+    User.distinct('businessId', { isPlatformAdmin: true }),
+  ]);
+  const ids = subscriptions
     .filter((subscription) => hasAdvancedFeatures(subscription, now))
-    .map((subscription) => subscription.businessId);
+    .map((subscription) => String(subscription.businessId));
+  return [...new Set([...ids, ...adminBusinessIds.map(String)])];
 }
 
 async function sendReportForBusiness(business, week, now) {

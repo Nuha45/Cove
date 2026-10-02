@@ -3,6 +3,7 @@ import {
   archiveAdminBusiness,
   deleteAdminBusiness,
   restoreAdminBusiness,
+  setAdminBusinessOwnerAdmin,
 } from '../../services/adminService';
 import { getErrorMessage } from '../../utils/errors';
 
@@ -31,15 +32,38 @@ const COPY = {
     busy: 'Deleting...',
     tone: 'danger',
   },
+  grantAdmin: {
+    eyebrow: 'GRANT ADMIN ACCESS',
+    title: (name) => `Make the owner of ${name} a platform admin?`,
+    text: 'They will be able to open the Admin panel, see every shop and seller email, and archive or delete shops. Their own shop stops needing a Cove plan. Only grant this to someone you trust.',
+    confirm: 'Grant admin access',
+    busy: 'Granting...',
+    tone: 'danger',
+  },
+  revokeAdmin: {
+    eyebrow: 'REMOVE ADMIN ACCESS',
+    title: (name) => `Remove admin access from the owner of ${name}?`,
+    text: 'They lose the Admin panel immediately. Their shop goes back to normal Cove billing: if they have no active trial or plan, their store pauses until they choose one.',
+    confirm: 'Remove admin access',
+    busy: 'Removing...',
+    tone: 'danger',
+  },
 };
+
+const EMAIL_CONFIRM_MODES = new Set(['grantAdmin', 'revokeAdmin']);
 
 export default function BusinessActionDialog({ business, mode, onClose, onDone, onFailed }) {
   const copy = COPY[mode];
   const [confirmSlug, setConfirmSlug] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const needsTyping = mode === 'delete';
-  const canSubmit = !submitting && (!needsTyping || confirmSlug.trim() === business.slug);
+  const confirmsEmail = EMAIL_CONFIRM_MODES.has(mode);
+  const needsTyping = mode === 'delete' || confirmsEmail;
+  const expected = confirmsEmail ? business.owner?.email || '' : business.slug;
+  const typedMatches = confirmsEmail
+    ? Boolean(expected) && confirmSlug.trim().toLowerCase() === expected.toLowerCase()
+    : confirmSlug.trim() === expected;
+  const canSubmit = !submitting && (!needsTyping || typedMatches);
 
   async function submit(event) {
     event.preventDefault();
@@ -50,7 +74,12 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone, 
       let result;
       if (mode === 'archive') result = await archiveAdminBusiness(business.id);
       else if (mode === 'restore') result = await restoreAdminBusiness(business.id);
-      else result = await deleteAdminBusiness(business.id, confirmSlug.trim());
+      else if (confirmsEmail) {
+        result = await setAdminBusinessOwnerAdmin(business.id, {
+          grant: mode === 'grantAdmin',
+          confirmEmail: confirmSlug.trim(),
+        });
+      } else result = await deleteAdminBusiness(business.id, confirmSlug.trim());
       onDone(mode, result);
     } catch (err) {
       setError(getErrorMessage(err));
@@ -73,7 +102,7 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone, 
         <p className="muted">{copy.text}</p>
         {needsTyping ? (
           <label className="confirm-type-field">
-            Type <code>{business.slug}</code> exactly to confirm
+            Type <code>{expected}</code> exactly to confirm
             <input
               value={confirmSlug}
               onChange={(event) => setConfirmSlug(event.target.value)}
