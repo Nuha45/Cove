@@ -17,7 +17,7 @@ function formatMoney(amount, currency = 'INR') {
   const code = currencyCode(currency);
   const formatted = formatCurrency(amount, code, { decimals: 2 });
   if (!PDF_PREFIX[code]) return formatted;
-  return formatted.replace(currencySymbol(code), PDF_PREFIX[code]).replace(/ {2,}/, ' ');
+  return formatted.replace(currencySymbol(code), PDF_PREFIX[code]).replace(/\u200E/g, '').replace(/ {2,}/, ' ');
 }
 
 function formatDate(date) {

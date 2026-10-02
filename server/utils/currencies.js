@@ -31,9 +31,10 @@ function formatMoney(amount, currency = 'INR', { decimals = 'auto' } = {}) {
     maximumFractionDigits: digits,
   }).format(Math.abs(safe));
   const sign = safe < 0 ? '-' : '';
-  // The dirham sign is Arabic script; a space keeps it from running into the digits.
+  // The dirham sign is right-to-left Arabic script: the left-to-right mark stops browsers and mail apps
+  // from drawing the amount before it ("20.40 د.إ"), and the space keeps it off the digits.
   const symbol = CURRENCY_SYMBOLS[code];
-  return code === 'AED' ? `${sign}${symbol} ${number}` : `${sign}${symbol}${number}`;
+  return code === 'AED' ? `${sign}${symbol}\u200E ${number}` : `${sign}${symbol}${number}`;
 }
 
 module.exports = { CURRENCIES, CURRENCY_SYMBOLS, currencyCode, currencySymbol, formatMoney };

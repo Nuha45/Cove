@@ -52,8 +52,9 @@ export function formatPrice(amount, currency = defaultCurrency) {
   }).format(Math.abs(safe));
   const sign = safe < 0 ? '-' : '';
   const symbol = currencySymbol(code);
-  // The dirham sign is Arabic script; a space keeps it from running into the digits.
-  return code === 'AED' ? `${sign}${symbol} ${number}` : `${sign}${symbol}${number}`;
+  // The dirham sign is right-to-left Arabic script: the left-to-right mark stops the browser from
+  // drawing the amount before it ("20.40 د.إ"), and the space keeps it off the digits.
+  return code === 'AED' ? `${sign}${symbol}\u200E ${number}` : `${sign}${symbol}${number}`;
 }
 
 export function formatOrderDate(iso) {

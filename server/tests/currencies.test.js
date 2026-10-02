@@ -28,8 +28,8 @@ describe('currencies', () => {
   });
 
   it('formats AED prices with the dirham sign', () => {
-    assert.equal(formatMoney(20.4, 'AED'), 'د.إ 20.40');
-    assert.equal(formatMoney(1250, 'AED'), 'د.إ 1,250');
+    assert.equal(formatMoney(20.4, 'AED'), 'د.إ\u200E 20.40');
+    assert.equal(formatMoney(1250, 'AED'), 'د.إ\u200E 1,250');
   });
 
   it('formats USD, GBP and EUR prices', () => {
@@ -50,7 +50,7 @@ describe('currencies', () => {
   });
 
   it('uses the store currency in emails', () => {
-    assert.equal(formatEmailMoney(20.4, 'AED'), 'د.إ 20.40');
+    assert.equal(formatEmailMoney(20.4, 'AED'), 'د.إ\u200E 20.40');
     assert.equal(formatEmailMoney(250, 'USD'), '$250');
     assert.equal(formatEmailMoney(250), '₹250');
   });

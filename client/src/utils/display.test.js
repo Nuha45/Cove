@@ -12,8 +12,8 @@ describe('formatPrice', () => {
   });
 
   it('formats AED with the dirham sign', () => {
-    expect(formatPrice(20.4, 'AED')).toBe('د.إ 20.40');
-    expect(formatPrice(1250, 'AED')).toBe('د.إ 1,250');
+    expect(formatPrice(20.4, 'AED')).toBe('د.إ\u200E 20.40');
+    expect(formatPrice(1250, 'AED')).toBe('د.إ\u200E 1,250');
   });
 
   it('formats USD, GBP and EUR', () => {
@@ -25,7 +25,7 @@ describe('formatPrice', () => {
   it('follows the store currency when none is passed', () => {
     setDefaultCurrency('AED');
     expect(getDefaultCurrency()).toBe('AED');
-    expect(formatPrice(250)).toBe('د.إ 250');
+    expect(formatPrice(250)).toBe('د.إ\u200E 250');
     expect(currencySymbol()).toBe('د.إ');
   });
 

@@ -215,7 +215,7 @@ export default function OrdersPage() {
                   </div>
                   <span className="clip">{itemSummary(order.items)}</span>
                   <strong>{formatPrice(order.total)}</strong>
-                  <div className="product-cell">
+                  <div className="product-cell order-payment-cell">
                     <Badge tone={PAYMENT_TONE[order.paymentStatus] || 'neutral'}>{order.paymentStatus}</Badge>
                     <small>
                       {paymentMethodLabel(order.paymentMethod) || 'No method'}
