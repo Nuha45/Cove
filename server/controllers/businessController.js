@@ -17,10 +17,11 @@ const updateSettings = asyncHandler(async (req, res) => {
   const fields = [
     'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
     'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
+    'deliveryEstimateEnabled', 'deliveryEstimate', 'deliveryEstimateNote',
     'storefrontTheme', 'storefrontAccent', 'storefrontBackground', 'storefrontCoverImage',
     'storefrontCoverFocusX', 'storefrontCoverFocusY',
     'paymentQrEnabled', 'paymentLinkEnabled', 'paymentInstructionsEnabled', 'payOnPickupEnabled',
-    'paymentLink', 'paymentQrImage', 'paymentUpiId', 'paymentInstructions',
+    'cashOnDeliveryEnabled', 'paymentLink', 'paymentQrImage', 'paymentUpiId', 'paymentInstructions',
     'emailNewOrders', 'emailPayments', 'emailCustomerWants',
     ...NOTIFICATION_FIELDS,
     ...PROMOTION_FIELDS,

@@ -9,9 +9,10 @@ import { paymentMethodLabel, paymentStatusCustomerCopy } from '../../utils/payme
 import { loadConfirmation, saveConfirmation } from '../../utils/storefront';
 import { PAYMENT_TONE, STATUS_TONE } from '../../utils/orders';
 import StorePaymentDetails from './StorePaymentDetails';
+import DeliveryEstimate from '../../components/storefront/DeliveryEstimate';
 
-function PaymentStatusCallout({ status }) {
-  const copy = paymentStatusCustomerCopy(status);
+function PaymentStatusCallout({ status, method }) {
+  const copy = paymentStatusCustomerCopy(status, method);
   let Icon = Clock3;
   let tone = 'pending';
   if (status === 'Paid') {
@@ -141,8 +142,10 @@ export default function StoreConfirmationPage() {
   const { order, business } = data;
   const currency = business?.currency || 'INR';
   const payments = business?.payments;
+  const isCashOnDelivery = order.paymentMethod === 'cash_on_delivery';
   const canSubmitReference = ['Payment Pending', 'Pending', 'Payment Submitted'].includes(order.paymentStatus)
     && order.status !== 'Cancelled'
+    && !isCashOnDelivery
     && Boolean(token);
   const hasConfigured = payments?.hasConfiguredMethod;
   const isPaid = order.paymentStatus === 'Paid';
@@ -166,7 +169,9 @@ export default function StoreConfirmationPage() {
             ) : (
               <>
                 Your order was received by <strong>{shopName}</strong>.
-                {' '}Next: pay the shop (if you have not already), then optionally share a payment reference.
+                {isCashOnDelivery
+                  ? ' Next: keep the cash ready and pay when your order is delivered.'
+                  : ' Next: pay the shop (if you have not already), then optionally share a payment reference.'}
               </>
             )}
           </p>
@@ -205,14 +210,18 @@ export default function StoreConfirmationPage() {
               )}
             </div>
 
-            <PaymentStatusCallout status={order.paymentStatus} />
+            <PaymentStatusCallout status={order.paymentStatus} method={order.paymentMethod} />
+
+            {order.deliveryMethod === 'Delivery' && order.status !== 'Completed' ? (
+              <DeliveryEstimate estimate={order.deliveryEstimate} />
+            ) : null}
           </>
         )}
       </section>
 
       {isCancelled ? null : (
       <section className="store-card">
-        <h2>Next step: pay {shopName}</h2>
+        <h2>{isCashOnDelivery ? `Next step: pay ${shopName} on delivery` : `Next step: pay ${shopName}`}</h2>
 
         {!hasConfigured ? (
           <div className="store-pay-pending">

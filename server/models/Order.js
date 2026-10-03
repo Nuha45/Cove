@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { STATUSES, PAYMENT_STATUSES, DELIVERY_METHODS } = require('../utils/orderStatus');
 const { PAYMENT_METHODS } = require('../utils/paymentMethods');
+const { publicOrderEstimate } = require('../utils/deliveryEstimate');
 
 const itemSchema = new mongoose.Schema(
   {
@@ -198,6 +199,11 @@ const orderSchema = new mongoose.Schema(
       maxlength: 500,
       default: '',
     },
+    // Copy of the seller's estimate shown at checkout, so later setting changes do not rewrite old orders.
+    deliveryEstimate: {
+      text: { type: String, trim: true, maxlength: 160, default: '' },
+      note: { type: String, trim: true, maxlength: 160, default: '' },
+    },
     // Links to Customers. Optional so Phase 3 orders created before Phase 5 still load.
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -281,6 +287,7 @@ orderSchema.methods.toPublic = function toPublic() {
     status: this.status,
     deliveryMethod: this.deliveryMethod,
     deliveryAddress: this.deliveryAddress || '',
+    deliveryEstimate: publicOrderEstimate(this),
     notes: this.notes || '',
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
@@ -311,6 +318,7 @@ orderSchema.methods.toCustomerConfirmation = function toCustomerConfirmation() {
     status: this.status,
     deliveryMethod: this.deliveryMethod,
     deliveryAddress: this.deliveryAddress || '',
+    deliveryEstimate: publicOrderEstimate(this),
     notes: this.notes || '',
     createdAt: this.createdAt,
   };

@@ -1,4 +1,4 @@
-const PAYMENT_METHODS = ['qr', 'payment_link', 'instructions', 'pay_on_pickup'];
+const PAYMENT_METHODS = ['qr', 'payment_link', 'instructions', 'pay_on_pickup', 'cash_on_delivery'];
 
 // Legacy "Pending" remains valid for existing orders. New orders use "Payment Pending".
 const PAYMENT_STATUSES = [
@@ -58,6 +58,8 @@ function methodLabel(method, currency = 'INR') {
       return 'Payment instructions';
     case 'pay_on_pickup':
       return 'Pay on pickup';
+    case 'cash_on_delivery':
+      return 'Cash on delivery';
     default:
       return 'Payment';
   }

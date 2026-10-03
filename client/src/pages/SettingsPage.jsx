@@ -7,7 +7,13 @@ import ResendVerificationButton from '../components/layout/ResendVerificationBut
 import PaymentCurrencyNote, { PaymentCurrencyInfo } from '../components/settings/PaymentCurrencyNote';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
 import CategoryField from '../components/ui/CategoryField';
+import DeliveryEstimate from '../components/storefront/DeliveryEstimate';
 import { categoryError } from '../utils/categories';
+import {
+  DELIVERY_ESTIMATE_NOTE_MAX,
+  DELIVERY_ESTIMATE_OPTIONS,
+  previewDeliveryEstimate,
+} from '../utils/deliveryEstimate';
 import { CURRENCIES } from '../utils/currencies';
 import { formatEyebrowDate, formatPrice, initials } from '../utils/display';
 import { getErrorMessage, getFieldErrors } from '../utils/errors';
@@ -59,11 +65,15 @@ const emptyForm = {
   pickupEnabled: true,
   deliveryEnabled: true,
   deliveryFee: '0',
+  deliveryEstimateEnabled: false,
+  deliveryEstimate: '2_3_days',
+  deliveryEstimateNote: '',
   storefrontActive: true,
   paymentQrEnabled: false,
   paymentLinkEnabled: false,
   paymentInstructionsEnabled: false,
   payOnPickupEnabled: true,
+  cashOnDeliveryEnabled: false,
   paymentLink: '',
   paymentQrImage: '',
   paymentUpiId: '',
@@ -92,11 +102,15 @@ function toForm(business) {
     pickupEnabled: business?.pickupEnabled !== false,
     deliveryEnabled: business?.deliveryEnabled !== false,
     deliveryFee: String(business?.deliveryFee ?? 0),
+    deliveryEstimateEnabled: Boolean(business?.deliveryEstimateEnabled),
+    deliveryEstimate: business?.deliveryEstimate || '2_3_days',
+    deliveryEstimateNote: business?.deliveryEstimateNote || '',
     storefrontActive: business?.storefrontActive !== false,
     paymentQrEnabled: Boolean(business?.paymentQrEnabled),
     paymentLinkEnabled: Boolean(business?.paymentLinkEnabled),
     paymentInstructionsEnabled: Boolean(business?.paymentInstructionsEnabled),
     payOnPickupEnabled: business?.payOnPickupEnabled !== false,
+    cashOnDeliveryEnabled: Boolean(business?.cashOnDeliveryEnabled),
     paymentLink: business?.paymentLink || '',
     paymentQrImage: business?.paymentQrImage || '',
     paymentUpiId: business?.paymentUpiId || '',
@@ -245,6 +259,11 @@ export default function SettingsPage() {
     }
     const fee = Number(form.deliveryFee);
     if (!Number.isFinite(fee) || fee < 0) next.deliveryFee = 'Delivery fee cannot be negative.';
+    if (form.deliveryEstimateNote.trim().length > DELIVERY_ESTIMATE_NOTE_MAX) {
+      next.deliveryEstimateNote = `Keep the delivery note under ${DELIVERY_ESTIMATE_NOTE_MAX} characters.`;
+    } else if (form.deliveryEstimateEnabled && form.deliveryEstimate === 'custom' && !form.deliveryEstimateNote.trim()) {
+      next.deliveryEstimateNote = 'Add your custom delivery message, or choose a standard estimate.';
+    }
     if (form.paymentLinkEnabled && form.paymentLink.trim()) {
       try {
         const url = new URL(form.paymentLink.trim());
@@ -298,11 +317,15 @@ export default function SettingsPage() {
         pickupEnabled: form.pickupEnabled,
         deliveryEnabled: form.deliveryEnabled,
         deliveryFee: Number(form.deliveryFee || 0),
+        deliveryEstimateEnabled: form.deliveryEstimateEnabled,
+        deliveryEstimate: form.deliveryEstimate,
+        deliveryEstimateNote: form.deliveryEstimateNote.replace(/\s+/g, ' ').trim(),
         storefrontActive: form.storefrontActive,
         paymentQrEnabled: form.paymentQrEnabled,
         paymentLinkEnabled: form.paymentLinkEnabled,
         paymentInstructionsEnabled: form.paymentInstructionsEnabled,
         payOnPickupEnabled: form.payOnPickupEnabled,
+        cashOnDeliveryEnabled: form.cashOnDeliveryEnabled,
         paymentLink: form.paymentLink.trim(),
         paymentQrImage: form.paymentQrImage,
         paymentUpiId: form.paymentUpiId.trim().toLowerCase(),
@@ -525,6 +548,56 @@ export default function SettingsPage() {
                 {errors.deliveryFee ? <span className="field-error">{errors.deliveryFee}</span> : null}
                 <small className="muted">Shown as {formatPrice(Number(form.deliveryFee) || 0, form.currency)} on checkout when delivery is selected.</small>
               </label>
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Show estimated delivery</strong>
+                  <small className="muted">
+                    Tell delivery customers roughly when to expect their order. Shown at checkout, on the order page and in
+                    order emails, always as an estimate rather than a guarantee.
+                    {form.deliveryEnabled ? '' : ' Only shown when delivery is turned on.'}
+                  </small>
+                </span>
+                <input
+                  name="deliveryEstimateEnabled"
+                  type="checkbox"
+                  checked={form.deliveryEstimateEnabled}
+                  onChange={update}
+                />
+              </label>
+              {form.deliveryEstimateEnabled ? (
+                <>
+                  <label>
+                    Estimated delivery
+                    <select name="deliveryEstimate" value={form.deliveryEstimate} onChange={update}>
+                      {DELIVERY_ESTIMATE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="wide">
+                    {form.deliveryEstimate === 'custom' ? 'Custom delivery message' : (
+                      <>Delivery note <span className="hint-inline">(optional)</span></>
+                    )}
+                    <input
+                      name="deliveryEstimateNote"
+                      value={form.deliveryEstimateNote}
+                      onChange={update}
+                      maxLength={DELIVERY_ESTIMATE_NOTE_MAX}
+                      placeholder={form.deliveryEstimate === 'custom'
+                        ? 'Delivered within 48 hours in the city'
+                        : 'Orders placed before 2 PM are usually delivered the same day.'}
+                    />
+                    {errors.deliveryEstimateNote ? <span className="field-error">{errors.deliveryEstimateNote}</span> : null}
+                  </label>
+                  {previewDeliveryEstimate(form) ? (
+                    <div className="wide">
+                      <small className="muted">Customers will see:</small>
+                      <DeliveryEstimate estimate={previewDeliveryEstimate(form)} />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               {!form.pickupEnabled && !form.deliveryEnabled ? (
                 <p className="form-error wide">Both pickup and delivery are off. Customers will not be able to place orders.</p>
               ) : null}
@@ -699,6 +772,23 @@ export default function SettingsPage() {
                   <PaymentCurrencyNote method="pickup" />
                 </span>
                 <input name="payOnPickupEnabled" type="checkbox" checked={form.payOnPickupEnabled} onChange={update} />
+              </label>
+
+              <label className="wide settings-toggle">
+                <span>
+                  <strong>Cash on delivery</strong>
+                  <small className="muted">
+                    Let delivery customers pay in cash when the order arrives. You mark the order paid once you receive the cash.
+                    {form.deliveryEnabled ? '' : ' Only shown to customers when delivery is turned on.'}
+                  </small>
+                  <PaymentCurrencyNote method="cod" />
+                </span>
+                <input
+                  name="cashOnDeliveryEnabled"
+                  type="checkbox"
+                  checked={form.cashOnDeliveryEnabled}
+                  onChange={update}
+                />
               </label>
             </div>
           ) : null}

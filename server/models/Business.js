@@ -3,6 +3,11 @@ const { CATEGORY_MIN, CATEGORY_MAX, CATEGORY_PATTERN } = require('../utils/categ
 const { CURRENCIES } = require('../utils/currencies');
 const { normalizeUpiId } = require('../utils/upi');
 const {
+  DELIVERY_ESTIMATES,
+  DELIVERY_ESTIMATE_NOTE_MAX,
+  deliveryEstimateFor,
+} = require('../utils/deliveryEstimate');
+const {
   STOREFRONT_THEMES,
   DEFAULT_STOREFRONT_THEME,
   DEFAULT_STOREFRONT_ACCENT,
@@ -148,6 +153,25 @@ const businessSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    cashOnDeliveryEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    deliveryEstimateEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    deliveryEstimate: {
+      type: String,
+      enum: DELIVERY_ESTIMATES,
+      default: '2_3_days',
+    },
+    deliveryEstimateNote: {
+      type: String,
+      trim: true,
+      maxlength: DELIVERY_ESTIMATE_NOTE_MAX,
+      default: '',
+    },
     paymentLink: {
       type: String,
       trim: true,
@@ -284,6 +308,7 @@ function paymentSettings(doc) {
     paymentLinkEnabled: Boolean(doc.paymentLinkEnabled),
     paymentInstructionsEnabled: Boolean(doc.paymentInstructionsEnabled),
     payOnPickupEnabled: doc.payOnPickupEnabled !== false,
+    cashOnDeliveryEnabled: Boolean(doc.cashOnDeliveryEnabled),
     paymentLink: doc.paymentLink || '',
     paymentQrImage: doc.paymentQrImage || '',
     paymentUpiId: normalizeUpiId(doc.paymentUpiId),
@@ -303,17 +328,20 @@ function publicPayments(doc) {
   const instructionsEnabled = Boolean(doc.paymentInstructionsEnabled)
     && Boolean(String(doc.paymentInstructions || '').trim());
   const payOnPickupEnabled = doc.payOnPickupEnabled !== false;
+  const cashOnDeliveryEnabled = Boolean(doc.cashOnDeliveryEnabled);
 
   return {
     qrEnabled,
     linkEnabled,
     instructionsEnabled,
     payOnPickupEnabled,
+    cashOnDeliveryEnabled,
     paymentLink: linkEnabled ? doc.paymentLink : '',
     paymentQrImage: qrEnabled && hasQrImage ? doc.paymentQrImage : '',
     upiId: qrEnabled && hasUpi ? upiId : '',
     paymentInstructions: instructionsEnabled ? String(doc.paymentInstructions || '').trim() : '',
-    hasConfiguredMethod: qrEnabled || linkEnabled || instructionsEnabled || payOnPickupEnabled,
+    hasConfiguredMethod: qrEnabled || linkEnabled || instructionsEnabled || payOnPickupEnabled
+      || cashOnDeliveryEnabled,
   };
 }
 
@@ -334,6 +362,9 @@ businessSchema.methods.toPublic = function toPublic() {
     pickupEnabled: this.pickupEnabled !== false,
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
+    deliveryEstimateEnabled: Boolean(this.deliveryEstimateEnabled),
+    deliveryEstimate: this.deliveryEstimate || '2_3_days',
+    deliveryEstimateNote: this.deliveryEstimateNote || '',
     storefrontActive: this.storefrontActive !== false,
     storefrontTheme: appearance.theme,
     storefrontAccent: appearance.accent,
@@ -367,6 +398,7 @@ businessSchema.methods.toStorefront = function toStorefront({ promotions = null,
     pickupEnabled: this.pickupEnabled !== false,
     deliveryEnabled: this.deliveryEnabled !== false,
     deliveryFee: Number(this.deliveryFee) || 0,
+    deliveryEstimate: deliveryEstimateFor(this),
     storefrontActive: this.storefrontActive !== false,
     appearance: publicAppearance(this, { plus }),
     payments: publicPayments(this),

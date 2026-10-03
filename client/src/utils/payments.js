@@ -1,7 +1,7 @@
-import { ExternalLink, FileText, Package, QrCode } from 'lucide-react';
+import { Banknote, ExternalLink, FileText, Package, QrCode } from 'lucide-react';
 import { getDefaultCurrency } from './display';
 
-export const PAYMENT_METHODS = ['qr', 'payment_link', 'instructions', 'pay_on_pickup'];
+export const PAYMENT_METHODS = ['qr', 'payment_link', 'instructions', 'pay_on_pickup', 'cash_on_delivery'];
 
 export function paymentMethodLabel(method, currency = getDefaultCurrency()) {
   const india = currency === 'INR';
@@ -14,6 +14,8 @@ export function paymentMethodLabel(method, currency = getDefaultCurrency()) {
       return 'Payment instructions';
     case 'pay_on_pickup':
       return 'Pay on pickup';
+    case 'cash_on_delivery':
+      return 'Cash on delivery';
     default:
       return 'Not selected';
   }
@@ -34,6 +36,8 @@ export function paymentMethodHint(method, currency = 'INR') {
       return 'Follow the seller\'s written payment steps.';
     case 'pay_on_pickup':
       return 'Pay the seller when you collect your order.';
+    case 'cash_on_delivery':
+      return 'Pay in cash when your order is delivered.';
     default:
       return '';
   }
@@ -49,6 +53,8 @@ export function paymentMethodIcon(method) {
       return FileText;
     case 'pay_on_pickup':
       return Package;
+    case 'cash_on_delivery':
+      return Banknote;
     default:
       return FileText;
   }
@@ -85,11 +91,21 @@ export function enabledCheckoutMethods(payments, deliveryMethod, currency = 'INR
       hint: paymentMethodHint('pay_on_pickup', currency),
     });
   }
+  if (payments.cashOnDeliveryEnabled && deliveryMethod === 'Delivery') {
+    options.push({
+      value: 'cash_on_delivery',
+      label: paymentMethodLabel('cash_on_delivery', currency),
+      hint: paymentMethodHint('cash_on_delivery', currency),
+    });
+  }
   return options;
 }
 
 /** Customer-facing explanation of payment status. Never implies Cove verified a transfer. */
-export function paymentStatusCustomerCopy(status) {
+export function paymentStatusCustomerCopy(status, method = '') {
+  if (method === 'cash_on_delivery' && ['Payment Pending', 'Pending'].includes(status)) {
+    return 'Pay in cash when your order is delivered. The seller marks it paid once they receive the cash.';
+  }
   switch (status) {
     case 'Paid':
       return 'The seller confirmed they received your payment.';

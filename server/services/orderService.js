@@ -198,6 +198,12 @@ async function create(businessId, input) {
         notes: input.notes || '',
         stockRestored: false,
       };
+      if (input.deliveryMethod === 'Delivery' && input.deliveryEstimate?.text) {
+        orderDoc.deliveryEstimate = {
+          text: input.deliveryEstimate.text,
+          note: input.deliveryEstimate.note || '',
+        };
+      }
       // Public storefront checkouts may attach a hashed confirmation token. Seller orders omit it.
       if (input.confirmationTokenHash) {
         orderDoc.confirmationTokenHash = input.confirmationTokenHash;

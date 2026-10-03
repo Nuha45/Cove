@@ -204,6 +204,15 @@ export default function OrderDetailPage() {
                       <dd className="address-block">{order.deliveryAddress}</dd>
                     </div>
                   ) : null}
+                  {order.deliveryEstimate?.text ? (
+                    <div className="wide">
+                      <dt>Estimated delivery shown to customer</dt>
+                      <dd>
+                        {order.deliveryEstimate.text}
+                        {order.deliveryEstimate.note ? ` · ${order.deliveryEstimate.note}` : ''}
+                      </dd>
+                    </div>
+                  ) : null}
                   <div className="wide">
                     <dt>Notes</dt>
                     <dd>{order.notes || 'No notes'}</dd>
@@ -221,6 +230,10 @@ export default function OrderDetailPage() {
                       then mark paid only if you received the correct amount. Cove does not verify the transfer.
                     </p>
                   </div>
+                ) : order.paymentMethod === 'cash_on_delivery' ? (
+                  <p className="muted">
+                    Cash on delivery. Collect {formatPrice(order.total)} in cash when you deliver, then mark the order as paid.
+                  </p>
                 ) : (
                   <p className="muted">Customer payment is manual. A submitted reference is not verified payment.</p>
                 )}
@@ -347,7 +360,11 @@ export default function OrderDetailPage() {
               ) : null}
 
               <h3>Payment actions</h3>
-              <p className="muted">Only mark paid after you have verified the transfer yourself.</p>
+              <p className="muted">
+                {order.paymentMethod === 'cash_on_delivery'
+                  ? 'Mark paid once you have received the cash.'
+                  : 'Only mark paid after you have verified the transfer yourself.'}
+              </p>
               {canMarkPaid ? (
                 <button
                   className="primary"

@@ -17,6 +17,10 @@ export const PAYMENT_CURRENCY_NOTES = {
     label: 'Currency: Your store currency',
     help: 'Payment is handled directly by the seller.',
   },
+  cod: {
+    label: 'Currency: Your store currency',
+    help: 'Payment is handled directly by the seller.',
+  },
 };
 
 export default function PaymentCurrencyNote({ method }) {

@@ -11,6 +11,7 @@ const PAYMENT_METHOD_LABELS = {
   payment_link: 'Payment link',
   instructions: 'Payment instructions',
   pay_on_pickup: 'Pay on pickup',
+  cash_on_delivery: 'Cash on delivery',
 };
 
 function escapeRegex(value) {
@@ -147,4 +148,5 @@ module.exports = {
   pdfForInvoiceId,
   pdfForOrder,
   renderForInvoice,
+  PAYMENT_METHOD_LABELS,
 };

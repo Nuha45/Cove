@@ -9,6 +9,7 @@ import { enabledCheckoutMethods, paymentMethodIcon } from '../../utils/payments'
 import { saveConfirmation } from '../../utils/storefront';
 import { EMPTY_ADDRESS, addressErrors, formatAddress } from '../../utils/address';
 import StorePaymentDetails from './StorePaymentDetails';
+import DeliveryEstimate from '../../components/storefront/DeliveryEstimate';
 
 function newCheckoutKey() {
   const bytes = new Uint8Array(24);
@@ -297,6 +298,9 @@ export default function StoreCheckoutPage() {
                 </div>
                 {errors.deliveryAddress ? <span className="field-error">{errors.deliveryAddress}</span> : null}
               </fieldset>
+            ) : null}
+            {form.deliveryMethod === 'Delivery' && business?.deliveryEstimate ? (
+              <DeliveryEstimate className="wide" estimate={business.deliveryEstimate} />
             ) : null}
 
             <div className="wide store-pay-section">

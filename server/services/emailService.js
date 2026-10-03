@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const env = require('../config/env');
 const { formatMoney: formatCurrency } = require('../utils/currencies');
+const { methodLabel } = require('../utils/paymentMethods');
 
 const memoryOutbox = [];
 let warnedUnconfigured = false;
@@ -345,11 +346,17 @@ async function sendEmailVerification({ to, name, verifyUrl, expiresInHours }) {
 async function sendSellerNewOrder({ to, businessName, order, orderUrl, currency }) {
   const subject = `New order received · ${order.orderNumber}`;
   const total = formatMoney(order.total, currency);
+  const method = order.paymentMethod ? methodLabel(order.paymentMethod, currency) : '';
+  const codNote = order.paymentMethod === 'cash_on_delivery'
+    ? `Collect ${total} in cash on delivery, then mark the order as paid in Cove.`
+    : '';
   const text = [
     `${businessName} received a new order.`,
     `Order: ${order.orderNumber}`,
     `Customer: ${order.customer?.name || 'Customer'}`,
     `Total: ${total}`,
+    method ? `Payment method: ${method}` : '',
+    codNote,
     orderUrl ? `Open: ${orderUrl}` : '',
   ].filter(Boolean).join('\n');
 
@@ -358,6 +365,8 @@ async function sendSellerNewOrder({ to, businessName, order, orderUrl, currency 
     bodyHtml: `
       <p><strong>${escapeHtml(order.orderNumber)}</strong> from ${escapeHtml(order.customer?.name || 'a customer')}</p>
       <p>Total: <strong>${escapeHtml(total)}</strong></p>
+      ${method ? `<p>Payment method: ${escapeHtml(method)}</p>` : ''}
+      ${codNote ? `<p>${escapeHtml(codNote)}</p>` : ''}
       ${orderUrl ? `<p><a href="${escapeHtml(orderUrl)}">View order</a></p>` : ''}
     `,
   });
@@ -375,6 +384,29 @@ const PAYMENT_STATUS_LABELS = {
 
 function paymentStatusLabel(status) {
   return PAYMENT_STATUS_LABELS[status] || status || '';
+}
+
+const ESTIMATE_DISCLAIMER = 'This is an estimate from the shop, not a guarantee.';
+
+function estimateFor(order) {
+  if (order.deliveryMethod !== 'Delivery' || !order.deliveryEstimate?.text) return null;
+  if (['Completed', 'Cancelled'].includes(order.status)) return null;
+  return order.deliveryEstimate;
+}
+
+function estimateText(order) {
+  const estimate = estimateFor(order);
+  if (!estimate) return [];
+  return [`Estimated delivery: ${estimate.text}`, estimate.note, ESTIMATE_DISCLAIMER].filter(Boolean);
+}
+
+function estimateHtml(order) {
+  const estimate = estimateFor(order);
+  if (!estimate) return '';
+  return `
+      <p style="margin:12px 0 4px;">Estimated delivery: <strong>${escapeHtml(estimate.text)}</strong></p>
+      ${estimate.note ? `<p style="margin:0 0 4px;line-height:1.5;">${escapeHtml(estimate.note)}</p>` : ''}
+      <p style="margin:0 0 12px;font-size:12px;color:#8a7b6c;">${ESTIMATE_DISCLAIMER}</p>`;
 }
 
 function trackingText(trackingUrl) {
@@ -423,6 +455,7 @@ async function sendCustomerOrderStatus({ to, businessName, order, trackingUrl })
     `Order: ${order.orderNumber}`,
     `Status: ${order.status}`,
     order.deliveryMethod ? `Delivery method: ${order.deliveryMethod}` : '',
+    ...estimateText(order),
     extra,
     trackingText(trackingUrl),
   ].filter(Boolean).join('\n');
@@ -432,6 +465,7 @@ async function sendCustomerOrderStatus({ to, businessName, order, trackingUrl })
       <p style="line-height:1.5;">${escapeHtml(copy.line(businessName))}</p>
       <p style="margin:0 0 6px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: <strong>${escapeHtml(order.status)}</strong></p>
       ${order.deliveryMethod ? `<p style="margin:0 0 6px;">Delivery method: ${escapeHtml(order.deliveryMethod)}</p>` : ''}
+      ${estimateHtml(order)}
       ${extra ? `<p style="line-height:1.5;">${escapeHtml(extra)}</p>` : ''}
       ${trackingHtml(trackingUrl)}
     `,
@@ -557,6 +591,10 @@ async function sendSellerLowStock({ to, businessName, products, threshold, produ
 async function sendCustomerOrderConfirmation({ to, businessName, order, currency, confirmationUrl, invoiceUrl }) {
   const subject = `Order received · ${order.orderNumber}`;
   const total = formatMoney(order.total, currency);
+  const method = order.paymentMethod ? methodLabel(order.paymentMethod, currency) : '';
+  const codNote = order.paymentMethod === 'cash_on_delivery'
+    ? `Please keep ${total} in cash ready when your order is delivered.`
+    : '';
   const text = [
     `Thanks for your order with ${businessName}.`,
     `Order: ${order.orderNumber}`,
@@ -564,6 +602,9 @@ async function sendCustomerOrderConfirmation({ to, businessName, order, currency
     `Total: ${total}`,
     `Status: ${order.status}`,
     order.paymentStatus ? `Payment status: ${paymentStatusLabel(order.paymentStatus)}` : '',
+    method ? `Payment method: ${method}` : '',
+    codNote,
+    ...estimateText(order),
     confirmationUrl ? `View your order: ${confirmationUrl}` : '',
     invoiceUrl ? `Invoice (PDF): ${invoiceUrl}` : '',
   ].filter(Boolean).join('\n');
@@ -572,6 +613,9 @@ async function sendCustomerOrderConfirmation({ to, businessName, order, currency
     bodyHtml: `
       <p style="line-height:1.5;">Thanks for your order with <strong>${escapeHtml(businessName)}</strong>.</p>
       <p style="margin:0 0 12px;">Order <strong>${escapeHtml(order.orderNumber)}</strong> · Status: ${escapeHtml(order.status)}${order.paymentStatus ? ` · Payment: ${escapeHtml(paymentStatusLabel(order.paymentStatus))}` : ''}</p>
+      ${method ? `<p style="margin:0 0 12px;">Payment method: ${escapeHtml(method)}</p>` : ''}
+      ${codNote ? `<p style="margin:0 0 12px;line-height:1.5;">${escapeHtml(codNote)}</p>` : ''}
+      ${estimateHtml(order)}
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
         ${order.items.map((item) => `
           <tr>

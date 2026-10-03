@@ -1,6 +1,7 @@
 const { body, param, query } = require('express-validator');
 const mongoose = require('mongoose');
 const { DELIVERY_METHODS } = require('../utils/orderStatus');
+const { PAYMENT_METHODS } = require('../utils/paymentMethods');
 
 function isObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
@@ -106,7 +107,7 @@ const checkoutRules = [
     .withMessage('Notes must be 500 characters or fewer.'),
   body('paymentMethod')
     .optional({ values: 'falsy' })
-    .isIn(['qr', 'payment_link', 'instructions', 'pay_on_pickup'])
+    .isIn(PAYMENT_METHODS)
     .withMessage('Please choose a valid payment method.'),
   body('checkoutKey')
     .optional({ values: 'falsy' })
@@ -131,7 +132,7 @@ const paymentReferenceRules = [
     .withMessage('Payment reference must be 120 characters or fewer.'),
   body('paymentMethod')
     .optional({ values: 'falsy' })
-    .isIn(['qr', 'payment_link', 'instructions', 'pay_on_pickup'])
+    .isIn(PAYMENT_METHODS)
     .withMessage('Please choose a valid payment method.'),
 ];
 

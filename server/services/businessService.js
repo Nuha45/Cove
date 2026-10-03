@@ -116,6 +116,20 @@ async function applySettings(businessId, input, imageChanges) {
   if (Object.prototype.hasOwnProperty.call(input, 'deliveryFee')) {
     business.deliveryFee = Math.round(Number(input.deliveryFee) * 100) / 100;
   }
+  if (Object.prototype.hasOwnProperty.call(input, 'deliveryEstimateEnabled')) {
+    business.deliveryEstimateEnabled = asBoolean(input.deliveryEstimateEnabled, business.deliveryEstimateEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'deliveryEstimate')) {
+    business.deliveryEstimate = input.deliveryEstimate;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'deliveryEstimateNote')) {
+    business.deliveryEstimateNote = String(input.deliveryEstimateNote || '').replace(/\s+/g, ' ').trim();
+  }
+  if (business.deliveryEstimateEnabled && business.deliveryEstimate === 'custom' && !business.deliveryEstimateNote) {
+    throw new ApiError(400, 'Add your custom delivery message, or choose a standard estimate.', [
+      { field: 'deliveryEstimateNote', message: 'Add your custom delivery message, or choose a standard estimate.' },
+    ]);
+  }
   if (Object.prototype.hasOwnProperty.call(input, 'storefrontActive')) {
     business.storefrontActive = asBoolean(input.storefrontActive, business.storefrontActive);
   }
@@ -160,6 +174,9 @@ async function applySettings(businessId, input, imageChanges) {
   }
   if (Object.prototype.hasOwnProperty.call(input, 'payOnPickupEnabled')) {
     business.payOnPickupEnabled = asBoolean(input.payOnPickupEnabled, business.payOnPickupEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'cashOnDeliveryEnabled')) {
+    business.cashOnDeliveryEnabled = asBoolean(input.cashOnDeliveryEnabled, business.cashOnDeliveryEnabled);
   }
   if (Object.prototype.hasOwnProperty.call(input, 'paymentLink')) {
     business.paymentLink = String(input.paymentLink || '').trim();

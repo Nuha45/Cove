@@ -1378,6 +1378,28 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
   line-height: 1.5;
   color: #5c5248;
 }
+.delivery-estimate {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f4f8f5;
+  border: 1px solid #d6e6dc;
+  color: #2f4a3a;
+}
+.delivery-estimate svg { flex: none; margin-top: 2px; }
+.delivery-estimate > div { display: grid; gap: 2px; min-width: 0; }
+.delivery-estimate-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5b7566;
+}
+.delivery-estimate strong { font-size: 15px; overflow-wrap: anywhere; }
+.delivery-estimate p { margin: 2px 0 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.delivery-estimate small { font-size: 12px; color: #6b7d72; }
 .store-pay-fallback {
   margin-top: 8px;
   padding: 10px 12px;

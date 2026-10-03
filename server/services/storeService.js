@@ -15,6 +15,7 @@ const {
   normalizePaymentMethod,
   PAYMENT_METHODS,
 } = require('../utils/paymentMethods');
+const { deliveryEstimateFor } = require('../utils/deliveryEstimate');
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -35,7 +36,24 @@ function enabledPaymentMethods(business, deliveryMethod) {
   if (payments.payOnPickupEnabled && deliveryMethod !== 'Delivery') {
     enabled.push('pay_on_pickup');
   }
+  if (payments.cashOnDeliveryEnabled && deliveryMethod === 'Delivery') {
+    enabled.push('cash_on_delivery');
+  }
   return enabled;
+}
+
+const COD_DELIVERY_ONLY = 'Cash on delivery is only available for delivery orders.';
+const COD_NO_REFERENCE = 'Cash on delivery is paid when your order arrives. The shop marks it paid once they receive the cash.';
+
+function assertMethodFitsDelivery(paymentMethod, deliveryMethod) {
+  if (paymentMethod === 'pay_on_pickup' && deliveryMethod !== 'Pickup') {
+    throw new ApiError(400, 'Pay on pickup is only available for pickup orders.', [
+      { field: 'paymentMethod', message: 'Pay on pickup is only available for pickup orders.' },
+    ]);
+  }
+  if (paymentMethod === 'cash_on_delivery' && deliveryMethod !== 'Delivery') {
+    throw new ApiError(400, COD_DELIVERY_ONLY, [{ field: 'paymentMethod', message: COD_DELIVERY_ONLY }]);
+  }
 }
 
 function resolvePaymentMethod(business, requested, deliveryMethod) {
@@ -228,12 +246,9 @@ async function createOrder(slug, input) {
     ]);
   }
 
-  let paymentMethod = resolvePaymentMethod(business, input.paymentMethod, method);
-  if (paymentMethod === 'pay_on_pickup' && method !== 'Pickup') {
-    throw new ApiError(400, 'Pay on pickup is only available for pickup orders.', [
-      { field: 'paymentMethod', message: 'Pay on pickup is only available for pickup orders.' },
-    ]);
-  }
+  // Give a clear reason when a delivery-only or pickup-only method is sent with the other fulfilment.
+  assertMethodFitsDelivery(normalizePaymentMethod(input.paymentMethod), method);
+  const paymentMethod = resolvePaymentMethod(business, input.paymentMethod, method);
 
   // Resolve the shop from the public slug. Ignore any businessId / fee from the browser.
   const deliveryFee = method === 'Delivery' ? roundMoney(business.deliveryFee || 0) : 0;
@@ -255,6 +270,8 @@ async function createOrder(slug, input) {
       deliveryFee,
       notes: input.notes,
       paymentMethod,
+      // Taken from the shop's saved settings, never from the browser.
+      deliveryEstimate: method === 'Delivery' ? deliveryEstimateFor(business) : null,
       confirmationTokenHash,
       confirmationTokenSealed: sealConfirmationToken(confirmationToken),
     });
@@ -331,14 +348,17 @@ async function submitPaymentReference(slug, token, input) {
     throw new ApiError(400, 'Payment details can no longer be updated for this order.');
   }
 
+  const requestedMethod = Object.prototype.hasOwnProperty.call(input, 'paymentMethod') && input.paymentMethod
+    ? normalizePaymentMethod(input.paymentMethod)
+    : '';
+  if (order.paymentMethod === 'cash_on_delivery' || requestedMethod === 'cash_on_delivery') {
+    throw new ApiError(400, COD_NO_REFERENCE);
+  }
+
   // Optional method change only while still awaiting payment, and only to enabled methods.
   if (Object.prototype.hasOwnProperty.call(input, 'paymentMethod') && input.paymentMethod) {
+    assertMethodFitsDelivery(requestedMethod, order.deliveryMethod);
     const nextMethod = resolvePaymentMethod(business, input.paymentMethod, order.deliveryMethod);
-    if (nextMethod === 'pay_on_pickup' && order.deliveryMethod !== 'Pickup') {
-      throw new ApiError(400, 'Pay on pickup is only available for pickup orders.', [
-        { field: 'paymentMethod', message: 'Pay on pickup is only available for pickup orders.' },
-      ]);
-    }
     if (['Payment Pending', 'Pending'].includes(order.paymentStatus) || order.paymentStatus === 'Payment Submitted') {
       order.paymentMethod = nextMethod;
     }

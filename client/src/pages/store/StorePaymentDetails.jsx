@@ -85,6 +85,17 @@ export default function StorePaymentDetails({
 
   if (!method) return null;
 
+  if (compact && method === 'cash_on_delivery') {
+    return (
+      <div className="store-pay-checkout-note">
+        <p>
+          You will pay <strong>{amountLabel}</strong> in cash to {businessName} when your order is delivered.
+          No online payment is needed now.
+        </p>
+      </div>
+    );
+  }
+
   if (compact) {
     return (
       <div className="store-pay-checkout-note">
@@ -274,6 +285,20 @@ export default function StorePaymentDetails({
             <li>Place your order as usual.</li>
             <li>Bring <strong>{amountLabel}</strong> when you collect it.</li>
             <li>Pay {businessName} at pickup — cash or whatever they accept in person.</li>
+          </ol>
+          <p className="store-pay-note">
+            No online transfer is required for this option.
+          </p>
+        </div>
+      ) : null}
+
+      {method === 'cash_on_delivery' ? (
+        <div className="store-pay-detail">
+          <h3>{label}</h3>
+          <ol className="store-pay-steps">
+            <li>Keep <strong>{amountLabel}</strong> in cash ready.</li>
+            <li>Pay {businessName} when your order is delivered.</li>
+            <li>The seller marks the order as paid once they receive the cash.</li>
           </ol>
           <p className="store-pay-note">
             No online transfer is required for this option.

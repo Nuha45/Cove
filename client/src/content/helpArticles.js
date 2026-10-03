@@ -48,7 +48,7 @@ export const HELP_CATEGORIES = [
       {
         id: 'seller-direct',
         title: 'How seller-direct payments work',
-        body: 'Customers pay you directly — for example with UPI, a QR code, a payment link, or pay on pickup. Cove never holds your customer payments. Set your preferred methods in Settings.',
+        body: 'Customers pay you directly — for example with UPI, a QR code, a payment link, pay on pickup, or cash on delivery. Cove never holds your customer payments. Set your preferred methods in Settings.',
       },
       {
         id: 'verify-payment',

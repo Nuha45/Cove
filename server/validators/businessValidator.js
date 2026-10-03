@@ -3,6 +3,7 @@ const { CATEGORY_MIN, CATEGORY_MAX, CATEGORY_PATTERN } = require('../utils/categ
 const { CURRENCIES } = require('../utils/currencies');
 const { isValidUpiId, normalizeUpiId } = require('../utils/upi');
 const { isAcceptedImageValue } = require('../utils/imageUpload');
+const { DELIVERY_ESTIMATES, DELIVERY_ESTIMATE_NOTE_MAX } = require('../utils/deliveryEstimate');
 const {
   STOREFRONT_THEMES,
   isValidAccent,
@@ -24,6 +25,7 @@ const PAYMENT_FIELDS = [
   'paymentLinkEnabled',
   'paymentInstructionsEnabled',
   'payOnPickupEnabled',
+  'cashOnDeliveryEnabled',
   'paymentLink',
   'paymentQrImage',
   'paymentUpiId',
@@ -112,6 +114,19 @@ const updateSettingsRules = [
     .withMessage('Please choose a supported currency.'),
   optionalBoolean('pickupEnabled', 'Pickup setting is not valid.'),
   optionalBoolean('deliveryEnabled', 'Delivery setting is not valid.'),
+  optionalBoolean('deliveryEstimateEnabled', 'Estimated delivery setting is not valid.'),
+  body('deliveryEstimate')
+    .optional()
+    .isIn(DELIVERY_ESTIMATES)
+    .withMessage('Please choose an estimated delivery option.'),
+  body('deliveryEstimateNote')
+    .optional({ values: 'null' })
+    .isString()
+    .withMessage('Delivery note is not valid.')
+    .bail()
+    .trim()
+    .isLength({ max: DELIVERY_ESTIMATE_NOTE_MAX })
+    .withMessage(`Delivery note must be ${DELIVERY_ESTIMATE_NOTE_MAX} characters or fewer.`),
   optionalBoolean('storefrontActive', 'Storefront setting is not valid.'),
   body('storefrontTheme')
     .optional()
@@ -156,6 +171,7 @@ const updateSettingsRules = [
   optionalBoolean('paymentLinkEnabled', 'Payment link setting is not valid.'),
   optionalBoolean('paymentInstructionsEnabled', 'Payment instructions setting is not valid.'),
   optionalBoolean('payOnPickupEnabled', 'Pay on pickup setting is not valid.'),
+  optionalBoolean('cashOnDeliveryEnabled', 'Cash on delivery setting is not valid.'),
   optionalBoolean('emailNewOrders', 'New order email setting is not valid.'),
   optionalBoolean('emailPayments', 'Payment email setting is not valid.'),
   optionalBoolean('emailCustomerWants', 'Customer request email setting is not valid.'),
@@ -267,6 +283,7 @@ const updateSettingsRules = [
     const allowed = [
       'name', 'slug', 'category', 'description', 'phone', 'email', 'city',
       'logo', 'currency', 'pickupEnabled', 'deliveryEnabled', 'deliveryFee', 'storefrontActive',
+      'deliveryEstimateEnabled', 'deliveryEstimate', 'deliveryEstimateNote',
       'storefrontTheme', 'storefrontAccent', 'storefrontBackground', 'storefrontCoverImage',
       'storefrontCoverFocusX', 'storefrontCoverFocusY',
       ...PAYMENT_FIELDS,
