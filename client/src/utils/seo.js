@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 export const SITE_NAME = 'Cove';
-export const DEFAULT_TITLE = 'Cove — Your online store, beautifully simple';
+export const DEFAULT_TITLE = 'Cove — Your business, beautifully simple.';
 export const DEFAULT_DESCRIPTION =
   'Cove gives independent sellers a ready-made online storefront with products, orders, customers and payments '
   + 'in one place. Start with a 7-day free trial.';

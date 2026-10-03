@@ -210,7 +210,7 @@ export default function HomePage() {
         <section className="home-hero">
           <div className="home-container home-hero-inner">
             <p className="home-eyebrow">Online stores for independent sellers</p>
-            <h1>Your store, beautifully simple.</h1>
+            <h1>Your business, beautifully simple.</h1>
             <p className="home-lead">
               Cove gives you a finished online storefront and the tools to run it — products, orders,
               customers and payments, all in one calm place.
