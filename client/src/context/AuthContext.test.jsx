@@ -103,6 +103,23 @@ describe('restoring a saved session after a browser restart', () => {
     expect(screen.getByText('Login form')).toBeTruthy();
   });
 
+  it('retries a 504 from a proxy timeout while the API is waking', async () => {
+    vi.mocked(authService.me)
+      .mockRejectedValueOnce(httpError(504))
+      .mockRejectedValueOnce(Object.assign(new Error('timeout'), { isAxiosError: true, code: 'ECONNABORTED', request: {} }))
+      .mockResolvedValueOnce(session);
+    renderApp('/dashboard');
+
+    await advance(0);
+    expect(screen.getByText(WAKING_MESSAGE)).toBeTruthy();
+    expect(screen.queryByText('We could not load your workspace')).toBeNull();
+
+    await advance(1500);
+    await advance(3000);
+    expect(authService.me).toHaveBeenCalledTimes(3);
+    expect(screen.getByText('Dashboard home')).toBeTruthy();
+  });
+
   it('stops after a bounded number of retries and explains the API is still starting', async () => {
     vi.mocked(authService.me).mockRejectedValue(httpError(503));
     renderApp('/dashboard');
@@ -110,10 +127,13 @@ describe('restoring a saved session after a browser restart', () => {
     await advance(0);
     await advance(1500);
     await advance(3000);
-    await advance(6000);
+    await advance(5000);
+    await advance(8000);
+    await advance(8000);
     await advance(60_000);
 
-    expect(authService.me).toHaveBeenCalledTimes(4);
+    expect(authService.me).toHaveBeenCalledTimes(6);
+    expect(screen.getByText('We could not load your workspace')).toBeTruthy();
     expect(screen.getByText(UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });

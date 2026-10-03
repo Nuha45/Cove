@@ -1,9 +1,18 @@
-// The hosted API sleeps when idle; while it wakes, requests fail with 502/503 or never connect.
-const TRANSIENT_STATUSES = new Set([502, 503]);
+// The hosted API sleeps when idle. While it wakes, requests fail with 502/503, a 504 from the
+// frontend proxy timing out, or a dropped/timed-out connection (common on mobile).
+const TRANSIENT_STATUSES = new Set([408, 502, 503, 504]);
+const TRANSIENT_CODES = new Set([
+  'ERR_NETWORK',
+  'ERR_NETWORK_CHANGED',
+  'ECONNABORTED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ERR_TIMED_OUT',
+]);
 
 export const RETRY_DELAYS_MS = [1500, 3000];
-// Restoring a saved session runs without user input, so it can wait a little longer for the API.
-export const SESSION_RETRY_DELAYS_MS = [1500, 3000, 6000];
+// A signed-in seller reopening the app often hits a sleeping API; keep retrying with short waits.
+export const SESSION_RETRY_DELAYS_MS = [1500, 3000, 5000, 8000, 8000];
 
 export const WAKING_MESSAGE = 'Cove is waking up. Please wait a moment…';
 export const UNAVAILABLE_MESSAGE =
@@ -11,7 +20,8 @@ export const UNAVAILABLE_MESSAGE =
 
 export function isTransientError(error) {
   if (!error || error.code === 'ERR_CANCELED') return false;
-  if (!error.response) return Boolean(error.request || error.isAxiosError || error.code === 'ERR_NETWORK');
+  if (TRANSIENT_CODES.has(error.code)) return true;
+  if (!error.response) return Boolean(error.request || error.isAxiosError);
   return TRANSIENT_STATUSES.has(error.response.status);
 }
 
