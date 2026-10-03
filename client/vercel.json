@@ -17,6 +17,10 @@
       "destination": "https://cove-api-p6ar.onrender.com/api/:path*"
     },
     {
+      "source": "/sitemap.xml",
+      "destination": "https://cove-api-p6ar.onrender.com/api/seo/sitemap.xml"
+    },
+    {
       "source": "/uploads/:path*",
       "destination": "https://cove-api-p6ar.onrender.com/uploads/:path*"
     },

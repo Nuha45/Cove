@@ -96,6 +96,36 @@ export function storeJsonLd(business, { url = '', image = '' } = {}) {
   });
 }
 
+export const COVE_URL = 'https://www.mycove.online';
+export const COVE_HOMEPAGE_URL = `${COVE_URL}/`;
+export const COVE_LOGO_URL = `${COVE_URL}/cove-logo.png`;
+export const COVE_ORGANIZATION_DESCRIPTION =
+  'Cove helps independent sellers manage their products, orders, customers, payments, and online business in one place.';
+
+export function homeJsonLd() {
+  const organizationId = `${COVE_HOMEPAGE_URL}#organization`;
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': organizationId,
+        name: SITE_NAME,
+        url: COVE_URL,
+        logo: COVE_LOGO_URL,
+        description: COVE_ORGANIZATION_DESCRIPTION,
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${COVE_HOMEPAGE_URL}#website`,
+        name: SITE_NAME,
+        url: COVE_HOMEPAGE_URL,
+        publisher: { '@id': organizationId },
+      },
+    ],
+  };
+}
+
 export function productJsonLd(product, business, { url = '', images = [] } = {}) {
   if (!product?.name) return null;
   const price = Number(product.price);

@@ -269,4 +269,13 @@ describe('client SEO helpers', () => {
       /Sitemap: https:\/\/api\.shop\.test\/api\/seo\/sitemap\.xml/
     );
   });
+
+  it('serves /sitemap.xml from the API sitemap instead of the React app', () => {
+    const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'client', 'vercel.json'), 'utf8'));
+    const sources = vercel.rewrites.map((rule) => rule.source);
+    const sitemapRule = vercel.rewrites.find((rule) => rule.source === '/sitemap.xml');
+    assert.ok(sitemapRule);
+    assert.match(sitemapRule.destination, /^https:\/\/[^/]+\/api\/seo\/sitemap\.xml$/);
+    assert.ok(sources.indexOf('/sitemap.xml') < sources.indexOf('/(.*)'));
+  });
 });

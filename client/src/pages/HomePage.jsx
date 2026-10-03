@@ -22,7 +22,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { PLAN_DETAILS } from '../utils/billing';
 import { STOREFRONT_THEMES, storeThemeProps } from '../utils/storefrontAppearance';
-import { absoluteAsset, absoluteUrl, DEFAULT_DESCRIPTION, DEFAULT_TITLE, useSeo } from '../utils/seo';
+import { absoluteAsset, absoluteUrl, DEFAULT_DESCRIPTION, DEFAULT_TITLE, homeJsonLd, useSeo } from '../utils/seo';
 
 const PREVIEW_ACCENTS = {
   warm: '#FF7A3D',
@@ -188,6 +188,7 @@ export default function HomePage() {
     image: absoluteAsset('/cove-mark.png'),
     imageAlt: 'Cove',
     twitterCard: 'summary',
+    jsonLd: homeJsonLd(),
   });
 
   useEffect(() => {
