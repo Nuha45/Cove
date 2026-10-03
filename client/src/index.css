@@ -1961,6 +1961,14 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
   padding: 10px 12px;
   font-size: 12px;
 }
+.form-notice {
+  color: #7a4a12;
+  background: #fff3e0;
+  border: 1px solid #f6dcb4;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
 .field-error { display: block; margin-top: 6px; font-weight: 600; }
 .form-error { background: #f9e9e7; border-radius: 8px; padding: 10px 12px; }
 .hint { color: var(--muted); font-size: 11px; font-weight: 500; }

@@ -8,6 +8,10 @@ export function login(payload) {
   return api.post('/auth/login', payload).then((res) => res.data);
 }
 
+export function wakeApi() {
+  return api.get('/health').then(() => true, () => false);
+}
+
 export function logout() {
   return api.post('/auth/logout').then((res) => res.data);
 }

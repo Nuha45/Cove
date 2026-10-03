@@ -114,6 +114,17 @@ describe('deployment readiness', { timeout: 120000 }, () => {
     }
   });
 
+  it('sets a persistent auth cookie that outlives a browser restart and matches the token lifetime', () => {
+    let captured;
+    const res = { cookie: (name, value, options) => { captured = { name, options }; } };
+    setAuthCookie(res, 'token');
+    assert.equal(captured.name, 'cove_token');
+    assert.equal(captured.options.httpOnly, true);
+    assert.equal(captured.options.path, '/');
+    assert.ok(captured.options.maxAge > 0, 'cookie needs maxAge or the browser drops it on restart');
+    assert.equal(captured.options.maxAge, env.jwtMaxAgeMs);
+  });
+
   it('escapes sitemap URLs and includes lastmod', () => {
     const xml = buildSitemapXml('https://shop.test/', [
       { path: '/store/a&b', lastmod: '2026-01-02T03:04:05.000Z' },

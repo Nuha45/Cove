@@ -2,6 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import * as authService from '../services/authService';
 import { getErrorMessage } from '../utils/errors';
 import { setDefaultCurrency } from '../utils/display';
+import {
+  isTransientError,
+  SESSION_RETRY_DELAYS_MS,
+  UNAVAILABLE_MESSAGE,
+  withTransientRetry,
+} from '../utils/retry';
 
 const AuthContext = createContext(null);
 
@@ -25,6 +31,7 @@ export function AuthProvider({ children }) {
   const [business, setBusiness] = useState(null);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
+  const [waking, setWaking] = useState(false);
   // Set during render so children format money in the shop's currency on their first paint.
   setDefaultCurrency(business?.currency);
 
@@ -32,7 +39,11 @@ export function AuthProvider({ children }) {
     setStatus('loading');
     setError('');
     try {
-      const data = await authService.me();
+      // A signed-in seller reopening the browser often meets a sleeping API; retry before treating it as an error.
+      const data = await withTransientRetry(() => authService.me(), {
+        delays: SESSION_RETRY_DELAYS_MS,
+        onRetry: () => setWaking(true),
+      });
       setUser(data.user);
       setBusiness(data.business);
       setStatus('authenticated');
@@ -43,8 +54,10 @@ export function AuthProvider({ children }) {
         setStatus('unauthenticated');
         return;
       }
-      setError(getErrorMessage(err));
+      setError(isTransientError(err) ? UNAVAILABLE_MESSAGE : getErrorMessage(err));
       setStatus('error');
+    } finally {
+      setWaking(false);
     }
   }
 
@@ -94,13 +107,14 @@ export function AuthProvider({ children }) {
       business,
       status,
       error,
+      waking,
       register,
       login,
       logout,
       refresh: loadSession,
       refreshUser,
     }),
-    [user, business, status, error, refreshUser]
+    [user, business, status, error, waking, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
