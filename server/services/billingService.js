@@ -393,9 +393,11 @@ async function runSubscriptionCheckout(businessId, { plan: requestedPlan } = {})
     detachProviderSubscription(subscription);
   }
 
+  // Delay the first Razorpay charge only while a Cove free trial is still running.
+  // After the trial — or when no trial applies — omit start_at so the first payment is
+  // the full plan amount (₹599 / ₹899), then recurring billing continues normally.
   let startAtUnix;
   if (subscription.trialEndAt && new Date(subscription.trialEndAt) > now) {
-    // Card is set up now; the first charge happens when the free trial ends.
     startAtUnix = toUnix(subscription.trialEndAt);
   } else if (!subscription.trialUsed && env.grantTrialOnRegister) {
     // Should be rare: grant the trial only when it was explicitly never used.
@@ -410,11 +412,11 @@ async function runSubscriptionCheckout(businessId, { plan: requestedPlan } = {})
   const expireByUnix = toUnix(addDays(now, 2));
   const created = await razorpayService.createSubscription({
     planKey,
-    startAtUnix,
     expireByUnix,
     notes: {
       businessId: String(businessId),
     },
+    ...(startAtUnix ? { startAtUnix } : {}),
   });
 
   subscription.provider = PROVIDER;
