@@ -95,6 +95,20 @@ const publicEventLimiter = rateLimit({
   },
 });
 
+// Public storefront reads (shop page + product pages) are open to anyone. The cap is generous
+// so a real shopper browsing a shop never notices, but a scraper hammering slug lookups hits a
+// ceiling. Counted per IP, like the other public limiters.
+const PUBLIC_STORE_LIMIT = 300;
+const publicStoreLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: PUBLIC_STORE_LIMIT,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Too many requests from this device. Please wait a few minutes and try again.',
+  },
+});
+
 const cronLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -156,6 +170,8 @@ module.exports.publicWantBoardLimiter = publicWantBoardLimiter;
 module.exports.publicWantVoteLimiter = publicWantVoteLimiter;
 module.exports.publicConfirmationLimiter = publicConfirmationLimiter;
 module.exports.publicEventLimiter = publicEventLimiter;
+module.exports.publicStoreLimiter = publicStoreLimiter;
+module.exports.PUBLIC_STORE_LIMIT = PUBLIC_STORE_LIMIT;
 module.exports.cronLimiter = cronLimiter;
 module.exports.forgotPasswordLimiter = forgotPasswordLimiter;
 module.exports.resetPasswordLimiter = resetPasswordLimiter;

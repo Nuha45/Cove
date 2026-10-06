@@ -16,7 +16,8 @@ function signToken(user) {
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, env.jwtSecret);
+  // Pin the algorithm: the secret is an HMAC key, so only HS256 tokens can be genuine.
+  return jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] });
 }
 
 function cookieOptions() {

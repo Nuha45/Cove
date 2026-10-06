@@ -12,8 +12,10 @@ function originOf(value) {
 
 // CSRF defence for cookie-authenticated writes. Browsers always attach Origin (or at least
 // Referer) to cross-site POST/PATCH/DELETE, so a foreign or opaque ("null") origin is refused.
-// Requests without either header come from non-browser clients, which cannot ride a
-// seller's cookie; Razorpay webhooks and cron jobs authenticate separately.
+// A write with neither header cannot come from a browser riding a seller's cookie: outside
+// production it stays open for local tools and the test suite; in production it must prove it
+// is a non-browser caller by presenting an Authorization header (the weekly-reports scheduler).
+// Razorpay webhooks are mounted outside /api and never reach this middleware.
 function requireTrustedOrigin(req, res, next) {
   if (SAFE_METHODS.has(req.method)) {
     next();
@@ -26,7 +28,14 @@ function requireTrustedOrigin(req, res, next) {
   if (originHeader !== undefined) origin = originHeader === 'null' ? 'null' : originOf(originHeader);
   else if (refererHeader) origin = originOf(refererHeader) || 'null';
 
-  if (!origin || env.clientOrigins.includes(origin)) {
+  if (origin && env.clientOrigins.includes(origin)) {
+    next();
+    return;
+  }
+
+  // No Origin and no Referer. Browsers always send at least one on cross-site writes, so this
+  // is a non-browser client. Production still requires proof (Authorization header present).
+  if (!origin && (!env.isProduction || req.get('authorization'))) {
     next();
     return;
   }
