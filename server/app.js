@@ -37,6 +37,9 @@ app.use(cors({
   credentials: true,
 }));
 
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 // Razorpay signature verification needs the exact raw body — mount before JSON parsing.
 app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes);
 
