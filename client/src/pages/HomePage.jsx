@@ -34,11 +34,35 @@ const PREVIEW_ACCENTS = {
 
 // Sample catalog for the illustration only; it is labelled as a sample on the page.
 const SAMPLE_PRODUCTS = [
-  { id: 's1', name: 'Hand-poured candle', category: 'Home', price: 450 },
-  { id: 's2', name: 'Linen tote bag', category: 'Bags', price: 890 },
-  { id: 's3', name: 'Brass leaf earrings', category: 'Jewellery', price: 1250 },
-  { id: 's4', name: 'Stoneware mug', category: 'Home', price: 650 },
-].map((item) => ({ ...item, images: [], available: true, stockAvailability: 'In stock' }));
+  {
+    id: 's1',
+    name: 'Hand-poured candle',
+    category: 'Home',
+    price: 450,
+    images: ['https://www.mycove.online/products/s1/candle.jpg'],
+  },
+  {
+    id: 's2',
+    name: 'Linen tote bag',
+    category: 'Bags',
+    price: 890,
+    images: ['https://www.mycove.online/products/s2/tote.jpg'],
+  },
+  {
+    id: 's3',
+    name: 'Brass leaf earrings',
+    category: 'Jewellery',
+    price: 1250,
+    images: ['https://www.mycove.online/products/s3/earrings.jpg'],
+  },
+  {
+    id: 's4',
+    name: 'Stoneware mug',
+    category: 'Home',
+    price: 650,
+    images: ['https://www.mycove.online/products/s4/mug.jpg'],
+  },
+].map((item) => ({ ...item, available: true, stockAvailability: 'In stock' }));
 
 const STEPS = [
   {
