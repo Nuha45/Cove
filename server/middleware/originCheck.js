@@ -33,6 +33,20 @@ function requireTrustedOrigin(req, res, next) {
     return;
   }
 
+  // Unauthenticated public storefront endpoints carry no session cookies or credentials.
+  // In-app webviews (Instagram, TikTok, WhatsApp) or sandboxed iframes frequently omit
+  // Origin/Referer or report an opaque "null" origin. Exempt these unauthenticated public writes
+  // when Origin/Referer is missing or null, while maintaining strict checks for foreign origins
+  // and full CSRF protection on authenticated cookie-bearing routes.
+  const isPublicStoreWrite =
+    (req.baseUrl === '/api' && req.path?.startsWith('/store/')) ||
+    (typeof req.originalUrl === 'string' && req.originalUrl.startsWith('/api/store/'));
+
+  if ((!origin || origin === 'null') && isPublicStoreWrite) {
+    next();
+    return;
+  }
+
   // No Origin and no Referer. Browsers always send at least one on cross-site writes, so this
   // is a non-browser client. Production still requires proof (Authorization header present).
   if (!origin && (!env.isProduction || req.get('authorization'))) {

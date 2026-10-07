@@ -53,6 +53,7 @@ const storeEventSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+storeEventSchema.index({ businessId: 1, createdAt: -1 });
 storeEventSchema.index({ businessId: 1, type: 1, createdAt: -1 });
 storeEventSchema.index({ businessId: 1, productId: 1, type: 1, createdAt: -1 });
 storeEventSchema.index({ businessId: 1, visitorHash: 1, type: 1, createdAt: -1 });

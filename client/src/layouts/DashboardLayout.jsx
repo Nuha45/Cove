@@ -6,6 +6,7 @@ import Sidebar from '../components/layout/Sidebar';
 import TopBar from '../components/layout/TopBar';
 import ResendVerificationButton from '../components/layout/ResendVerificationButton';
 import OnboardingModal from '../components/onboarding/OnboardingModal';
+import ErrorBoundary from '../components/ui/ErrorBoundary';
 import { getErrorMessage } from '../utils/errors';
 import {
   getOnboardingState,
@@ -249,15 +250,20 @@ export default function DashboardLayout() {
               <Link className="primary" to="/billing">View plans</Link>
             </div>
           ) : null}
-          <Outlet
-            context={{
-              notify,
-              openOnboarding,
-              activeProductCount: activeProductCount ?? 0,
-              plan,
-              refreshPlan,
-            }}
-          />
+          <ErrorBoundary
+            title="Section unavailable"
+            message="This section encountered an unexpected error. Please reload to try again."
+          >
+            <Outlet
+              context={{
+                notify,
+                openOnboarding,
+                activeProductCount: activeProductCount ?? 0,
+                plan,
+                refreshPlan,
+              }}
+            />
+          </ErrorBoundary>
         </div>
       </main>
       {toast ? (

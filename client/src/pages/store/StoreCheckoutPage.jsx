@@ -53,7 +53,9 @@ export default function StoreCheckoutPage() {
   const errorRef = useRef(null);
 
   useEffect(() => {
-    if (formError) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (formError && typeof errorRef.current?.scrollIntoView === 'function') {
+      errorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }, [formError]);
 
   const paymentOptions = useMemo(

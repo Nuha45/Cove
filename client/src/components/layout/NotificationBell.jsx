@@ -41,7 +41,9 @@ export default function NotificationBell() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
 
+  const countRef = useRef(0);
   openRef.current = open;
+  countRef.current = count;
 
   function clearToastTimer() {
     if (toastTimerRef.current) {
@@ -60,32 +62,50 @@ export default function NotificationBell() {
   }
 
   async function poll({ announce }) {
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
-      const [listResult, countResult] = await Promise.all([
-        listNotifications({ limit: 20 }),
-        getUnreadNotificationCount(),
-      ]);
-      const notifications = listResult.notifications || [];
-      const nextCount = Number(countResult.count) || 0;
-      setCount(nextCount);
       if (openRef.current) {
+        const [listResult, countResult] = await Promise.all([
+          listNotifications({ limit: 20 }),
+          getUnreadNotificationCount(),
+        ]);
+        const notifications = listResult.notifications || [];
+        const nextCount = Number(countResult.count) || 0;
+        setCount(nextCount);
         setItems(notifications);
-      }
 
-      const ids = notifications.map((item) => item.id);
-      if (knownIdsRef.current === null) {
-        knownIdsRef.current = new Set(ids);
-        return;
-      }
+        const ids = notifications.map((item) => item.id);
+        if (knownIdsRef.current === null) {
+          knownIdsRef.current = new Set(ids);
+          return;
+        }
 
-      if (announce) {
-        const newcomers = notifications.filter((item) => !knownIdsRef.current.has(item.id));
-        if (newcomers.length) {
-          showToast(newcomers[0]);
+        if (announce) {
+          const newcomers = notifications.filter((item) => !knownIdsRef.current.has(item.id));
+          if (newcomers.length) {
+            showToast(newcomers[0]);
+          }
+        }
+
+        ids.forEach((id) => knownIdsRef.current.add(id));
+      } else {
+        const countResult = await getUnreadNotificationCount();
+        const nextCount = Number(countResult.count) || 0;
+        const prevCount = countRef.current;
+        setCount(nextCount);
+
+        if (announce && nextCount > prevCount && nextCount > 0) {
+          const listResult = await listNotifications({ limit: 1 });
+          const notifications = listResult.notifications || [];
+          if (notifications.length) {
+            const newest = notifications[0];
+            if (!knownIdsRef.current?.has(newest.id)) {
+              showToast(newest);
+              if (knownIdsRef.current) knownIdsRef.current.add(newest.id);
+            }
+          }
         }
       }
-
-      ids.forEach((id) => knownIdsRef.current.add(id));
     } catch {
       // Keep the last known state if polling fails.
     }
@@ -119,6 +139,7 @@ export default function NotificationBell() {
 
     async function tick(announce) {
       if (cancelled) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
       await poll({ announce });
     }
 

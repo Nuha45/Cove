@@ -8,6 +8,7 @@ import { applySeo } from '../../utils/seo';
 import { trackVisit } from '../../utils/tracking';
 import StoreLayout from './StoreLayout';
 import CoveLogo from '../../components/brand/CoveLogo';
+import ErrorBoundary from '../../components/ui/ErrorBoundary';
 
 const STATE_TITLES = {
   missing: 'Shop not found · Cove',
@@ -74,7 +75,14 @@ export default function StoreShell() {
   }, [state, business?.name, onOrderPage, closed]);
 
   if (onOrderPage && closed) {
-    return <StoreLayout business={business} initialCatalog={initialCatalog} />;
+    return (
+      <ErrorBoundary
+        title="Shop temporarily unavailable"
+        message="This shop encountered an unexpected error. Please reload to try again."
+      >
+        <StoreLayout business={business} initialCatalog={initialCatalog} />
+      </ErrorBoundary>
+    );
   }
 
   if (state === 'loading') {
@@ -137,5 +145,12 @@ export default function StoreShell() {
     );
   }
 
-  return <StoreLayout business={business} initialCatalog={initialCatalog} />;
+  return (
+    <ErrorBoundary
+      title="Shop temporarily unavailable"
+      message="This shop encountered an unexpected error. Please reload to try again."
+    >
+      <StoreLayout business={business} initialCatalog={initialCatalog} />
+    </ErrorBoundary>
+  );
 }

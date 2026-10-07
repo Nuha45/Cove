@@ -74,6 +74,17 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     loadSession();
+
+    function handleSessionExpired() {
+      setUser(null);
+      setBusiness(null);
+      setStatus('unauthenticated');
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('cove:session-expired', handleSessionExpired);
+      return () => window.removeEventListener('cove:session-expired', handleSessionExpired);
+    }
   }, []);
 
   async function register(payload) {
