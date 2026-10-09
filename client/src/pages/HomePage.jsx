@@ -39,28 +39,28 @@ const SAMPLE_PRODUCTS = [
     name: 'Hand-poured candle',
     category: 'Home',
     price: 450,
-    images: ['https://www.mycove.online/products/s1/candle.jpg'],
+    images: ['/products/candle.jpg'],
   },
   {
     id: 's2',
     name: 'Linen tote bag',
     category: 'Bags',
     price: 890,
-    images: ['https://www.mycove.online/products/s2/tote.jpg'],
+    images: ['/products/tote.jpg'],
   },
   {
     id: 's3',
     name: 'Brass leaf earrings',
     category: 'Jewellery',
     price: 1250,
-    images: ['https://www.mycove.online/products/s3/earrings.jpg'],
+    images: ['/products/earrings.jpg'],
   },
   {
     id: 's4',
     name: 'Stoneware mug',
     category: 'Home',
     price: 650,
-    images: ['https://www.mycove.online/products/s4/mug.jpg'],
+    images: ['/products/mug.jpg'],
   },
 ].map((item) => ({ ...item, available: true, stockAvailability: 'In stock' }));
 
