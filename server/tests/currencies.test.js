@@ -55,8 +55,8 @@ describe('currencies', () => {
     assert.equal(formatEmailMoney(250), '₹250');
   });
 
-  it('uses PDF-safe prefixes on invoices', () => {
-    assert.equal(formatPdfMoney(1250, 'INR'), 'Rs. 1,250.00');
+  it('uses symbols the invoice fonts can draw, and a code for AED', () => {
+    assert.equal(formatPdfMoney(1250, 'INR'), '₹1,250.00');
     assert.equal(formatPdfMoney(20.4, 'AED'), 'AED 20.40');
     assert.equal(formatPdfMoney(1250, 'USD'), '$1,250.00');
     assert.equal(formatPdfMoney(1250, 'GBP'), '£1,250.00');

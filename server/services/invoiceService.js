@@ -112,12 +112,14 @@ async function list(businessId, { page = 1, limit = 20, search = '' } = {}) {
 
 async function renderForInvoice(invoice) {
   const order = await Order.findOne({ _id: invoice.orderId, businessId: invoice.businessId })
-    .select('paymentStatus paymentMethod status')
+    .select('paymentStatus paymentMethod status notes deliveryEstimate')
     .lean();
   return renderInvoicePdf(invoice, {
     paymentStatus: order?.paymentStatus === 'Pending' ? 'Payment Pending' : (order?.paymentStatus || ''),
     paymentMethod: PAYMENT_METHOD_LABELS[order?.paymentMethod] || '',
     orderStatus: order?.status || '',
+    notes: order?.notes || '',
+    deliveryEstimate: invoice.deliveryMethod === 'Delivery' ? order?.deliveryEstimate?.text || '' : '',
   });
 }
 

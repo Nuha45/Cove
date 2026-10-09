@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, CircleAlert, CircleCheck, Clock3 } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleCheck, Clock3, Download, FileText } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
-import { getStoreOrderConfirmation, submitStorePaymentReference } from '../../services/storeService';
+import { getStoreOrderConfirmation, storeInvoiceUrl, submitStorePaymentReference } from '../../services/storeService';
 import { formatOrderDate, formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
 import { paymentMethodLabel, paymentStatusCustomerCopy } from '../../utils/payments';
@@ -152,6 +152,7 @@ export default function StoreConfirmationPage() {
   const isCancelled = order.status === 'Cancelled';
   const showPayDetails = Boolean(order.paymentMethod) && !isPaid && !isCancelled;
   const shopName = business?.name || 'the shop';
+  const showInvoice = Boolean(data.invoiceAvailable && token);
 
   return (
     <div className="store-confirm">
@@ -319,6 +320,21 @@ export default function StoreConfirmationPage() {
           ? <p className="address-block">{order.deliveryAddress}</p>
           : <p>The seller will share pickup details with you.</p>}
         {order.notes ? <p className="muted">Notes: {order.notes}</p> : null}
+
+        {showInvoice ? (
+          <>
+            <h3 className="store-confirm-subhead">Invoice</h3>
+            <p className="muted">The invoice always shows the latest payment and order status.</p>
+            <div className="store-confirm-invoice">
+              <a className="secondary" href={storeInvoiceUrl(slug, token)} target="_blank" rel="noopener noreferrer">
+                <FileText size={16} aria-hidden="true" /> View invoice
+              </a>
+              <a className="secondary" href={storeInvoiceUrl(slug, token, { download: true })} rel="noopener noreferrer">
+                <Download size={16} aria-hidden="true" /> Download PDF
+              </a>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <Link className="primary" to={`/store/${slug}`}>Continue shopping</Link>

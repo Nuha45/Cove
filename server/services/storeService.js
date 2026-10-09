@@ -174,9 +174,14 @@ async function buildPromotions(business, categories) {
   return hasContent ? promotions : null;
 }
 
+// Invoices are a Cove Plus feature, for the shop and for its customers alike.
+async function isInvoiceAvailable(businessId) {
+  return billing().hasAdvancedAccess(businessId);
+}
+
 async function getOrderInvoice(slug, token) {
   const { business, order } = await getOrderConfirmation(slug, token);
-  if (!(await billing().hasAdvancedAccess(business._id))) {
+  if (!(await isInvoiceAvailable(business._id))) {
     throw new ApiError(404, 'An invoice is not available for this order.');
   }
   const invoiceService = require('./invoiceService');
@@ -404,6 +409,7 @@ module.exports = {
   createOrder,
   getOrderConfirmation,
   getOrderInvoice,
+  isInvoiceAvailable,
   submitPaymentReference,
   PAYMENT_METHODS,
 };

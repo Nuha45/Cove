@@ -7,10 +7,14 @@ import { getStoreOrderConfirmation } from '../../services/storeService';
 vi.mock('../../services/storeService', () => ({
   getStoreOrderConfirmation: vi.fn(),
   submitStorePaymentReference: vi.fn(),
+  storeInvoiceUrl: (slug, token, { download = false } = {}) => (
+    `/api/store/${slug}/orders/confirm/${token}/invoice${download ? '?download=1' : ''}`
+  ),
 }));
 
-function confirmation(order) {
+function confirmation(order, extra = {}) {
   return {
+    ...extra,
     business: {
       name: 'Cash Kitchen',
       currency: 'INR',
@@ -33,10 +37,10 @@ function confirmation(order) {
   };
 }
 
-async function renderPage(order) {
-  vi.mocked(getStoreOrderConfirmation).mockResolvedValue(confirmation(order));
+async function renderPage(order, extra, path = '/store/cash-kitchen/order/COV-1001?c=token123') {
+  vi.mocked(getStoreOrderConfirmation).mockResolvedValue(confirmation(order, extra));
   render(
-    <MemoryRouter initialEntries={['/store/cash-kitchen/order/COV-1001?c=token123']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/store/:slug/order/:orderNumber" element={<StoreConfirmationPage />} />
       </Routes>
@@ -92,5 +96,34 @@ describe('StoreConfirmationPage cash on delivery', () => {
     await renderPage({ paymentMethod: 'cash_on_delivery', paymentStatus: 'Paid' });
     expect(screen.getByText(/The seller marked this order as paid/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Submit payment reference' })).toBeNull();
+  });
+});
+
+describe('StoreConfirmationPage invoice', () => {
+  it('links to the invoice through the private confirmation token when the shop offers invoices', async () => {
+    await renderPage({ paymentMethod: 'cash_on_delivery' }, { invoiceAvailable: true });
+    expect(screen.getByRole('heading', { name: 'Invoice' })).toBeTruthy();
+    const view = screen.getByRole('link', { name: 'View invoice' });
+    expect(view.getAttribute('href')).toBe('/api/store/cash-kitchen/orders/confirm/token123/invoice');
+    expect(view.getAttribute('target')).toBe('_blank');
+    expect(view.getAttribute('rel')).toContain('noreferrer');
+    expect(screen.getByRole('link', { name: 'Download PDF' }).getAttribute('href'))
+      .toBe('/api/store/cash-kitchen/orders/confirm/token123/invoice?download=1');
+  });
+
+  it('hides the invoice when the shop does not offer invoices', async () => {
+    await renderPage({ paymentMethod: 'cash_on_delivery' }, { invoiceAvailable: false });
+    expect(screen.queryByRole('heading', { name: 'Invoice' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'View invoice' })).toBeNull();
+  });
+
+  it('hides the invoice without the confirmation token, even from a saved copy', async () => {
+    window.sessionStorage.clear();
+    await renderPage({ paymentMethod: 'cash_on_delivery' }, { invoiceAvailable: true });
+    cleanup();
+    await renderPage({ paymentMethod: 'cash_on_delivery' }, { invoiceAvailable: true }, '/store/cash-kitchen/order/COV-1001');
+    expect(getStoreOrderConfirmation).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('link', { name: 'View invoice' })).toBeNull();
+    window.sessionStorage.clear();
   });
 });

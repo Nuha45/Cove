@@ -20,6 +20,13 @@ export function getStoreOrderConfirmation(slug, token) {
   return api.get(`/store/${slug}/orders/confirm/${encodeURIComponent(token)}`).then((res) => res.data);
 }
 
+// A plain link: the private confirmation token is the only access check, so no session is needed.
+export function storeInvoiceUrl(slug, token, { download = false } = {}) {
+  const base = String(api.defaults.baseURL || '/api').replace(/\/$/, '');
+  const url = `${base}/store/${encodeURIComponent(slug)}/orders/confirm/${encodeURIComponent(token)}/invoice`;
+  return download ? `${url}?download=1` : url;
+}
+
 export function submitStorePaymentReference(slug, token, input) {
   return api
     .post(`/store/${slug}/orders/confirm/${encodeURIComponent(token)}/payment`, input)

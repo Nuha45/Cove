@@ -22,6 +22,7 @@ const weeklyReportService = require('../services/weeklyReportService');
 const { signToken } = require('../services/tokenService');
 const { resolveRange } = require('../utils/dateRange');
 const { csvCell } = require('../utils/csv');
+const { pdfText } = require('./_pdfText');
 
 const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const password = 'AdvancedTest1';
@@ -412,6 +413,84 @@ describe('cove advanced', { timeout: 240000 }, () => {
       const wrongShop = await api('GET', `/api/store/${other.slug}/orders/confirm/${confirmationToken}/invoice`);
       assert.equal(wrongShop.status, 404);
     });
+
+    it('serves the same invoice to the customer and the seller, inline or as a download', async () => {
+      const invoice = await waitFor(() => Invoice.findOne({ businessId: owner.businessId, orderId: order._id }));
+      const path = `/api/store/${owner.slug}/orders/confirm/${confirmationToken}/invoice`;
+
+      const inline = await api('GET', path);
+      assert.equal(inline.status, 200);
+      assert.match(inline.headers.get('content-disposition'), /^inline; filename="INV-\d{6}\.pdf"$/);
+      assert.match(inline.headers.get('cache-control'), /no-store/);
+      const customerText = pdfText(inline.buffer);
+      assert.ok(customerText.includes(invoice.invoiceNumber));
+      assert.ok(customerText.includes(order.orderNumber));
+
+      const download = await api('GET', `${path}?download=1`);
+      assert.equal(download.status, 200);
+      assert.match(download.headers.get('content-disposition'), /^attachment; filename="INV-\d{6}\.pdf"$/);
+
+      const seller = await api('GET', `/api/invoices/${invoice._id}/pdf`, { token: owner.token });
+      assert.equal(seller.status, 200);
+      assert.ok(pdfText(seller.buffer).includes(invoice.invoiceNumber));
+      assert.equal(await Invoice.countDocuments({ businessId: owner.businessId, orderId: order._id }), 1);
+    });
+
+    it('only opens the invoice for the order the token belongs to', async () => {
+      const product = await addProduct(owner.token, { name: 'Second Buyer Ring', price: 900, stockQuantity: 5, status: 'Active' });
+      const second = await placeStoreOrder(owner.slug, product.id, { quantity: 2 });
+      await waitFor(() => Invoice.findOne({ businessId: owner.businessId, orderNumber: second.order.orderNumber }));
+
+      const mine = pdfText((await api('GET', `/api/store/${owner.slug}/orders/confirm/${confirmationToken}/invoice`)).buffer);
+      assert.ok(mine.includes(order.orderNumber));
+      assert.ok(!mine.includes(second.order.orderNumber));
+      assert.ok(!mine.includes('Second Buyer Ring'));
+
+      const theirs = pdfText((await api('GET', `/api/store/${owner.slug}/orders/confirm/${second.confirmationToken}/invoice`)).buffer);
+      assert.ok(theirs.includes(second.order.orderNumber));
+      assert.ok(!theirs.includes(order.orderNumber));
+
+      for (const guess of ['a'.repeat(64), `${confirmationToken.slice(0, -1)}0`, order._id.toString(), order.orderNumber]) {
+        if (guess === confirmationToken) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const res = await api('GET', `/api/store/${owner.slug}/orders/confirm/${encodeURIComponent(guess)}/invoice`);
+        assert.equal(res.status, 404, `token guess should not open an invoice: ${res.status}`);
+        assert.equal(res.buffer, undefined);
+      }
+    });
+
+    it('keeps a pending payment pending and reflects the seller confirming it later', async () => {
+      const path = `/api/store/${owner.slug}/orders/confirm/${confirmationToken}/invoice`;
+      const before = await Order.findById(order._id).lean();
+      assert.equal(before.paymentStatus, 'Payment Pending');
+
+      const pending = pdfText((await api('GET', path)).buffer).split('\n');
+      assert.ok(pending.includes('Payment Pending'));
+      assert.ok(!pending.includes('Paid'));
+      assert.equal((await Order.findById(order._id).lean()).paymentStatus, 'Payment Pending');
+
+      const paid = await api('PATCH', `/api/orders/${order._id}`, { token: owner.token, body: { paymentStatus: 'Paid' } });
+      assert.equal(paid.status, 200, JSON.stringify(paid.data));
+      const after = pdfText((await api('GET', path)).buffer).split('\n');
+      assert.ok(after.includes('Paid'));
+      assert.ok(!after.includes('Payment Pending'));
+      assert.equal(await Invoice.countDocuments({ businessId: owner.businessId, orderId: order._id }), 1);
+    });
+
+    it('tells the confirmation page whether the shop offers invoices', async () => {
+      const confirm = await api('GET', `/api/store/${owner.slug}/orders/confirm/${confirmationToken}`);
+      assert.equal(confirm.status, 200);
+      assert.equal(confirm.data.invoiceAvailable, true);
+
+      const product = await addProduct(basic.token, { name: 'Basic Plan Earring', price: 300, stockQuantity: 5, status: 'Active' });
+      const placed = await placeStoreOrder(basic.slug, product.id);
+      assert.equal(placed.invoiceAvailable, false);
+      const basicConfirm = await api('GET', `/api/store/${basic.slug}/orders/confirm/${placed.confirmationToken}`);
+      assert.equal(basicConfirm.status, 200);
+      assert.equal(basicConfirm.data.invoiceAvailable, false);
+      const basicInvoice = await api('GET', `/api/store/${basic.slug}/orders/confirm/${placed.confirmationToken}/invoice`);
+      assert.equal(basicInvoice.status, 404);
+    });
   });
 
   describe('bulk products', () => {
@@ -452,7 +531,17 @@ describe('cove advanced', { timeout: 240000 }, () => {
       const sent = await waitFor(() => emailService.getMemoryOutbox().find((item) => item.to === email));
       assert.ok(sent, 'customer confirmation email should be sent');
       assert.match(sent.subject, new RegExp(placed.order.orderNumber));
-      assert.match(sent.html, /\/invoice/);
+      const invoiceLink = sent.html.match(/href="([^"]+\/orders\/confirm\/[^"]+\/invoice)"/);
+      assert.ok(invoiceLink, 'email should link to the customer invoice');
+      const invoicePath = new URL(invoiceLink[1].replace(/&amp;/g, '&')).pathname;
+      assert.equal(invoicePath, `/api/store/${owner.slug}/orders/confirm/${placed.confirmationToken}/invoice`);
+      const linked = await api('GET', invoicePath);
+      assert.equal(linked.status, 200);
+      assert.ok(pdfText(linked.buffer).includes(placed.order.orderNumber));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.equal(emailService.getMemoryOutbox().filter((item) => item.to === email).length, 1);
+      const placedOrder = await Order.findOne({ businessId: owner.businessId, orderNumber: placed.order.orderNumber });
+      assert.equal(await Invoice.countDocuments({ businessId: owner.businessId, orderId: placedOrder._id }), 1);
 
       await api('PATCH', '/api/business/settings', { token: owner.token, body: { emailOrderConfirmation: false } });
       emailService.clearMemoryOutbox();

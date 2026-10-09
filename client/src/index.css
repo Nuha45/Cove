@@ -1922,6 +1922,8 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
 .store-confirm-due small { font-size: 13px; color: #6f6256; }
 .store-confirm-overview .store-confirm-meta { margin-bottom: 12px; }
 .store-confirm-subhead { margin: 18px 0 8px; font-size: 14px; }
+.store-confirm-invoice { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.store-confirm-invoice .secondary { min-height: 44px; }
 .store-pay-reference {
   display: grid;
   gap: 12px;

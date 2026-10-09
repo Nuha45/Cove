@@ -34,8 +34,9 @@ const trackEvent = asyncHandler(async (req, res) => {
 
 const getOrderInvoice = asyncHandler(async (req, res) => {
   const { invoice, pdf } = await storeService.getOrderInvoice(req.params.slug, req.params.token);
+  const disposition = req.query.download === '1' ? 'attachment' : 'inline';
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${invoice.invoiceNumber}.pdf"`);
+  res.setHeader('Content-Disposition', `${disposition}; filename="${invoice.invoiceNumber}.pdf"`);
   res.setHeader('Cache-Control', 'private, no-store');
   res.send(pdf);
 });
@@ -73,6 +74,7 @@ const createOrder = asyncHandler(async (req, res) => {
     order: result.order.toCustomerConfirmation(),
     business: result.business.toConfirmation(),
     confirmationToken: result.confirmationToken,
+    invoiceAvailable: await storeService.isInvoiceAvailable(result.business._id),
   });
 });
 
@@ -81,6 +83,7 @@ const getOrderConfirmation = asyncHandler(async (req, res) => {
   res.json({
     order: result.order.toCustomerConfirmation(),
     business: result.business.toConfirmation({ paused: result.paused }),
+    invoiceAvailable: await storeService.isInvoiceAvailable(result.business._id),
   });
 });
 
@@ -93,6 +96,7 @@ const submitPaymentReference = asyncHandler(async (req, res) => {
     message: 'Payment details saved. The seller still needs to confirm payment.',
     order: result.order.toCustomerConfirmation(),
     business: result.business.toConfirmation(),
+    invoiceAvailable: await storeService.isInvoiceAvailable(result.business._id),
   });
 });
 
