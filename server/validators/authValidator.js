@@ -9,14 +9,18 @@ const emailRule = body('email')
   .withMessage('Please enter a valid email.')
   .toLowerCase();
 
-const passwordRule = body('password')
-  .isString()
-  .isLength({ min: 8, max: 72 })
-  .withMessage('Use at least 8 characters.')
-  .matches(/[A-Za-z]/)
-  .withMessage('Password must include a letter.')
-  .matches(/\d/)
-  .withMessage('Password must include a number.');
+function strongPasswordRule(field) {
+  return body(field)
+    .isString()
+    .isLength({ min: 8, max: 72 })
+    .withMessage('Use at least 8 characters.')
+    .matches(/[A-Za-z]/)
+    .withMessage('Password must include a letter.')
+    .matches(/\d/)
+    .withMessage('Password must include a number.');
+}
+
+const passwordRule = strongPasswordRule('password');
 
 const registerRules = [
   body('name')
@@ -88,6 +92,35 @@ const resetPasswordRules = [
     }),
 ];
 
+const changePasswordRules = [
+  body('currentPassword')
+    .isString()
+    .withMessage('Please enter your current password.')
+    .bail()
+    .notEmpty()
+    .withMessage('Please enter your current password.')
+    .isLength({ max: 72 })
+    .withMessage('Your current password is incorrect.'),
+  strongPasswordRule('newPassword')
+    .bail()
+    .custom((value, { req }) => {
+      if (value === req.body.currentPassword) {
+        throw new Error('Choose a password different from your current one.');
+      }
+      return true;
+    }),
+  body('confirmPassword')
+    .isString()
+    .notEmpty()
+    .withMessage('Please confirm your new password.')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Passwords do not match.');
+      }
+      return true;
+    }),
+];
+
 const verifyEmailRules = [
   body('token')
     .isString()
@@ -101,5 +134,6 @@ module.exports = {
   loginRules,
   forgotPasswordRules,
   resetPasswordRules,
+  changePasswordRules,
   verifyEmailRules,
 };

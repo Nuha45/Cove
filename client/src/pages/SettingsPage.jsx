@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, ExternalLink } from 'lucide-react';
+import {
+  Bell,
+  Building2,
+  Copy,
+  CreditCard,
+  ExternalLink,
+  Info,
+  Store,
+  Trash2,
+  Truck,
+  Upload,
+  User,
+} from 'lucide-react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PageIntro from '../components/ui/PageIntro';
+import PasswordField from '../components/ui/PasswordField';
 import ResendVerificationButton from '../components/layout/ResendVerificationButton';
 import PaymentCurrencyNote, { PaymentCurrencyInfo } from '../components/settings/PaymentCurrencyNote';
 import { getBusinessSettings, updateBusinessSettings } from '../services/businessService';
+import { changePassword } from '../services/authService';
 import CategoryField from '../components/ui/CategoryField';
 import DeliveryEstimate from '../components/storefront/DeliveryEstimate';
 import { categoryError } from '../utils/categories';
@@ -23,6 +37,7 @@ import { copyText, storefrontPath, storefrontUrl } from '../utils/storefront';
 import { buildUpiPayUri, isValidUpiId, upiQrDataUrl } from '../utils/upi';
 
 const tabs = [
+  'Seller Profile',
   'Business Profile',
   'Storefront',
   'Ordering & Delivery',
@@ -30,10 +45,22 @@ const tabs = [
   'Notifications',
 ];
 
+const DEFAULT_TAB = 'Business Profile';
+
+const TAB_ICONS = {
+  'Seller Profile': User,
+  'Business Profile': Building2,
+  'Storefront': Store,
+  'Ordering & Delivery': Truck,
+  'Customer payments': CreditCard,
+  Notifications: Bell,
+};
+
 const TAB_ALIASES = {
   profile: 'Business Profile',
   'business-profile': 'Business Profile',
   'business profile': 'Business Profile',
+  'seller-profile': 'Seller Profile',
   storefront: 'Storefront',
   ordering: 'Ordering & Delivery',
   delivery: 'Ordering & Delivery',
@@ -88,6 +115,44 @@ const emptyForm = {
   lowStockThreshold: '5',
 };
 
+const emptyPasswordForm = { currentPassword: '', newPassword: '', confirmPassword: '' };
+
+function passwordErrorsFor(values) {
+  const next = {};
+  if (!values.currentPassword) next.currentPassword = 'Please enter your current password.';
+  const { newPassword } = values;
+  if (newPassword.length < 8 || newPassword.length > 72 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+    next.newPassword = 'Use 8 to 72 characters, including a letter and a number.';
+  } else if (newPassword === values.currentPassword) {
+    next.newPassword = 'Choose a password different from your current one.';
+  }
+  if (!values.confirmPassword) {
+    next.confirmPassword = 'Please confirm your new password.';
+  } else if (values.confirmPassword !== newPassword) {
+    next.confirmPassword = 'Passwords do not match.';
+  }
+  return next;
+}
+
+// Built only from the plan state the dashboard already loaded; null until it has, or if loading failed.
+function sellerPlanSummary(plan, user) {
+  if (plan?.loading !== false || plan.error) return null;
+  if (user?.isPlatformAdmin) {
+    return { name: 'No plan needed', badge: { tone: 'neutral', label: 'Cove admin' }, text: 'Cove billing does not apply to this shop.' };
+  }
+  const name = plan.key === 'advanced' ? 'Cove Plus' : 'Cove Basic';
+  if (plan.storePaused) {
+    return { name, badge: { tone: 'red', label: 'Store paused' }, text: 'Choose a plan in Billing to reopen your store.' };
+  }
+  if (plan.trialEnded || plan.access === 'trial_ended') {
+    return { name: 'No active plan', badge: { tone: 'orange', label: 'Trial ended' }, text: 'Choose Cove Basic or Cove Plus to keep using Cove.' };
+  }
+  if (plan.inTrial) {
+    return { name: 'Free trial', badge: { tone: 'blue', label: 'Trial' }, text: 'Cove Plus features are included during your trial.' };
+  }
+  return { name, badge: null, text: plan.advanced ? 'Includes all Cove Plus features.' : 'Everything you need to run your shop.' };
+}
+
 function toForm(business) {
   return {
     name: business?.name || '',
@@ -133,7 +198,7 @@ export default function SettingsPage() {
   const [searchParams] = useSearchParams();
   const fileInput = useRef(null);
   const qrInput = useRef(null);
-  const [tab, setTab] = useState(() => tabFromSearch(searchParams.get('tab')) || tabs[0]);
+  const [tab, setTab] = useState(() => tabFromSearch(searchParams.get('tab')) || DEFAULT_TAB);
   const [form, setForm] = useState(emptyForm);
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
@@ -143,6 +208,13 @@ export default function SettingsPage() {
   const [logoError, setLogoError] = useState('');
   const [qrError, setQrError] = useState('');
   const [upiPreviewQr, setUpiPreviewQr] = useState('');
+  const [passwordForm, setPasswordForm] = useState(emptyPasswordForm);
+  const [passwordErrors, setPasswordErrors] = useState({});
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const sellerProfile = tab === 'Seller Profile';
+  const planSummary = sellerPlanSummary(plan, user);
 
   useEffect(() => {
     const nextTab = tabFromSearch(searchParams.get('tab'));
@@ -350,6 +422,40 @@ export default function SettingsPage() {
     }
   }
 
+  function updatePassword(event) {
+    const { name, value } = event.target;
+    setPasswordForm((current) => ({ ...current, [name]: value }));
+    setPasswordSuccess('');
+  }
+
+  async function handlePasswordChange(event) {
+    event.preventDefault();
+    if (changingPassword) return;
+    const nextErrors = passwordErrorsFor(passwordForm);
+    setPasswordErrors(nextErrors);
+    setPasswordError('');
+    setPasswordSuccess('');
+    if (Object.keys(nextErrors).length) return;
+
+    setChangingPassword(true);
+    try {
+      const result = await changePassword(passwordForm);
+      const message = result.message || 'Your password has been changed.';
+      setPasswordForm(emptyPasswordForm);
+      setPasswordSuccess(message);
+      notify(message);
+    } catch (err) {
+      setPasswordErrors(getFieldErrors(err));
+      setPasswordError(getErrorMessage(err));
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
+  // Seller Profile has its own password form, so business settings cannot be submitted from it.
+  const Panel = sellerProfile ? 'section' : 'form';
+  const panelProps = sellerProfile ? {} : { onSubmit: save, noValidate: true };
+
   if (loadState === 'loading') {
     return <section className="card panel-state">Loading settings...</section>;
   }
@@ -369,109 +475,375 @@ export default function SettingsPage() {
         title="Settings"
         subtitle="Configure how your shop looks and how customers order."
       />
-      <form className="settings-grid" onSubmit={save} noValidate>
-        <div className="settings-nav card">
-          {tabs.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={tab === item ? 'selected' : ''}
-              onClick={() => setTab(item)}
-            >
-              {item}
-            </button>
-          ))}
+      <div className="settings-grid">
+        <div className="settings-nav card" aria-label="Settings navigation">
+          {tabs.map((item) => {
+            const Icon = TAB_ICONS[item] || Building2;
+            return (
+              <button
+                key={item}
+                type="button"
+                className={tab === item ? 'selected' : ''}
+                onClick={() => setTab(item)}
+              >
+                <Icon size={16} aria-hidden="true" />
+                <span>{item}</span>
+              </button>
+            );
+          })}
         </div>
 
-        <section className="card settings-form">
+        <Panel className="card settings-form" {...panelProps}>
           <div className="form-heading">
             <div>
-              <h2>{tab}</h2>
+              <div className="form-heading-title-row">
+                <h2>{tab}</h2>
+                {tab === 'Business Profile' ? (
+                  <span className="badge soft-orange">Public profile</span>
+                ) : null}
+              </div>
               <p className="muted">
                 {tab === 'Business Profile' && 'This information appears on your public storefront.'}
                 {tab === 'Storefront' && 'Control your public shop link and whether customers can browse.'}
                 {tab === 'Ordering & Delivery' && 'Choose how customers receive orders and what delivery costs.'}
+                {tab === 'Seller Profile' && 'Manage your account details and security.'}
                 {tab === 'Customer payments' && 'Tell customers how to pay you directly. Cove does not collect or verify these payments.'}
                 {tab === 'Notifications' && 'Choose which email alerts Cove sends to your account email.'}
               </p>
             </div>
-            <button className="primary" type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save changes'}
-            </button>
+            {sellerProfile ? null : (
+              <button className="primary" type="submit" disabled={saving}>
+                {saving ? 'Saving...' : 'Save changes'}
+              </button>
+            )}
           </div>
 
-          {formError ? <p className="form-error">{formError}</p> : null}
+          {formError && !sellerProfile ? <p className="form-error">{formError}</p> : null}
 
-          {tab === 'Business Profile' ? (
-            <>
-              <div className="logo-upload">
-                {form.logo ? (
-                  <img className="logo-circle" src={mediaUrl(form.logo)} alt="" />
-                ) : (
-                  <div className="logo-circle">{initials(form.name, 1)}</div>
-                )}
-                <div>
-                  <strong>Business logo</strong>
-                  <p className="muted">JPG, PNG, or WebP · up to 10 MB, resized automatically</p>
-                  {logoError ? <span className="field-error">{logoError}</span> : null}
-                  {errors.logo ? <span className="field-error">{errors.logo}</span> : null}
+          {tab === 'Seller Profile' ? (
+            <div className="settings-profile-layout seller-profile">
+              <div className="settings-section">
+                <div className="settings-section-head">
+                  <h3>Account</h3>
+                  <p className="muted">The person who signs in to Cove and manages this shop.</p>
                 </div>
-                <div className="logo-actions">
-                  <button className="secondary" type="button" onClick={() => fileInput.current?.click()}>
-                    Upload new
-                  </button>
-                  {form.logo ? (
-                    <button className="secondary" type="button" onClick={() => setForm((current) => ({ ...current, logo: '' }))}>
-                      Remove
-                    </button>
+                <div className="seller-account-card">
+                  <div className="seller-account-avatar" aria-hidden="true">{initials(user?.name, 2)}</div>
+                  <div className="seller-account-main">
+                    <div className="seller-account-name-row">
+                      <strong>{user?.name || 'Seller'}</strong>
+                      <span className="badge soft-orange">Shop owner</span>
+                      {user?.isPlatformAdmin ? <span className="badge blue">Cove admin</span> : null}
+                    </div>
+                    <dl className="seller-account-details">
+                      <div>
+                        <dt>Account email</dt>
+                        <dd>{user?.email}</dd>
+                      </div>
+                      <div>
+                        <dt>Email status</dt>
+                        <dd>
+                          {user?.emailVerified === false ? (
+                            <span className="email-verification-status">
+                              <span className="badge orange">Verification required</span>
+                              <ResendVerificationButton onResult={notify} />
+                            </span>
+                          ) : (
+                            <span className="badge green">Verified</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="seller-account-note muted">
+                      Cove sends sign-in, security and order emails to this address.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="seller-summary-grid">
+                  <div className="seller-summary-card">
+                    <div className="seller-summary-head">
+                      <Building2 size={16} aria-hidden="true" />
+                      <span>Business</span>
+                    </div>
+                    <div className="seller-summary-business">
+                      {form.logo ? (
+                        <img className="seller-summary-logo" src={mediaUrl(form.logo)} alt="" />
+                      ) : (
+                        <div className="seller-summary-logo" aria-hidden="true">{initials(form.name, 1)}</div>
+                      )}
+                      <div className="seller-summary-text">
+                        <strong>{form.name || 'Your shop'}</strong>
+                        <span className="muted">
+                          {[form.category, form.city].filter(Boolean).join(' · ') || 'Add your shop details'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="seller-summary-actions">
+                      <button className="secondary" type="button" onClick={() => setTab('Business Profile')}>
+                        Edit business profile
+                      </button>
+                      {form.slug ? (
+                        <a className="seller-summary-link" href={publicPath} target="_blank" rel="noreferrer">
+                          <ExternalLink size={13} aria-hidden="true" />
+                          <span>View store</span>
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {planSummary ? (
+                    <div className="seller-summary-card">
+                      <div className="seller-summary-head">
+                        <CreditCard size={16} aria-hidden="true" />
+                        <span>Cove plan</span>
+                      </div>
+                      <div className="seller-summary-plan">
+                        <div className="seller-summary-name-row">
+                          <strong>{planSummary.name}</strong>
+                          {planSummary.badge ? (
+                            <span className={`badge ${planSummary.badge.tone}`}>{planSummary.badge.label}</span>
+                          ) : null}
+                        </div>
+                        <span className="muted">{planSummary.text}</span>
+                      </div>
+                      <div className="seller-summary-actions">
+                        <Link className="secondary" to="/billing">Manage billing</Link>
+                      </div>
+                    </div>
                   ) : null}
                 </div>
-                <input
-                  ref={fileInput}
-                  className="product-file-input"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={onLogoSelected}
-                />
               </div>
 
-              <div className="form-grid">
-                <label>
-                  Business name
-                  <input name="name" value={form.name} onChange={update} required maxLength={80} />
-                  {errors.name ? <span className="field-error">{errors.name}</span> : null}
-                </label>
-                <CategoryField
-                  className="wide"
-                  value={form.category}
-                  onChange={(category) => setForm((current) => ({ ...current, category }))}
-                  error={errors.category}
-                />
-                <label className="wide">
-                  Description
-                  <textarea name="description" value={form.description} onChange={update} maxLength={300} rows={3} placeholder="A short line about your business." />
-                  {errors.description ? <span className="field-error">{errors.description}</span> : null}
-                </label>
-                <label>
-                  Phone number
-                  <input name="phone" value={form.phone} onChange={update} placeholder="98765 43210" />
-                  {errors.phone ? <span className="field-error">{errors.phone}</span> : null}
-                </label>
-                <label>
-                  Business email
-                  <input name="email" type="email" value={form.email} onChange={update} placeholder="hello@yourshop.com" />
-                  {errors.email ? <span className="field-error">{errors.email}</span> : null}
-                </label>
-                <label>
-                  City
-                  <input name="city" value={form.city} onChange={update} maxLength={60} />
-                </label>
-                <p className="wide muted">
-                  These business details may be displayed on your public storefront so customers can identify and contact
-                  your shop.
-                </p>
+              <div className="settings-section">
+                <div className="settings-section-head">
+                  <h3>Change password</h3>
+                  <p className="muted">Use at least 8 characters with a letter and a number.</p>
+                </div>
+                <div className="seller-password-card">
+                  <form className="settings-section-body" onSubmit={handlePasswordChange} noValidate>
+                    {passwordError ? <p className="form-error" role="alert">{passwordError}</p> : null}
+                    {passwordSuccess ? <p className="form-notice" role="status">{passwordSuccess}</p> : null}
+                    <div className="form-grid">
+                      <div className="wide">
+                        <PasswordField
+                          id="current-password"
+                          name="currentPassword"
+                          label="Current password"
+                          autoComplete="current-password"
+                          value={passwordForm.currentPassword}
+                          onChange={updatePassword}
+                          disabled={changingPassword}
+                          error={passwordErrors.currentPassword}
+                        />
+                      </div>
+                      <PasswordField
+                        id="new-password"
+                        name="newPassword"
+                        label="New password"
+                        autoComplete="new-password"
+                        placeholder="At least 8 characters"
+                        hint="Use a letter and a number."
+                        value={passwordForm.newPassword}
+                        onChange={updatePassword}
+                        disabled={changingPassword}
+                        error={passwordErrors.newPassword}
+                      />
+                      <PasswordField
+                        id="confirm-password"
+                        name="confirmPassword"
+                        label="Confirm new password"
+                        autoComplete="new-password"
+                        value={passwordForm.confirmPassword}
+                        onChange={updatePassword}
+                        disabled={changingPassword}
+                        error={passwordErrors.confirmPassword}
+                      />
+                      <div className="wide">
+                        <button type="submit" className="primary" disabled={changingPassword}>
+                          {changingPassword ? 'Changing password...' : 'Change password'}
+                        </button>
+                        <p className="muted">Changing your password signs you out on your other devices.</p>
+                      </div>
+                    </div>
+                  </form>
+                </div>
               </div>
-            </>
+            </div>
+          ) : null}
+          {tab === 'Business Profile' ? (
+            <div className="settings-profile-layout">
+              <div className="settings-section">
+                <div className="settings-section-head">
+                  <h3>Store logo &amp; branding</h3>
+                  <p className="muted">Displayed on your storefront header, mobile preview, and order invoices.</p>
+                </div>
+                <div className="logo-upload">
+                  {form.logo ? (
+                    <img className="logo-circle" src={mediaUrl(form.logo)} alt="" />
+                  ) : (
+                    <div className="logo-circle">{initials(form.name, 1)}</div>
+                  )}
+                  <div className="logo-meta">
+                    <div className="logo-title-row">
+                      <strong>Business logo</strong>
+                      {form.logo ? (
+                        <span className="badge green">Custom logo</span>
+                      ) : (
+                        <span className="badge soft-orange">Default avatar</span>
+                      )}
+                    </div>
+                    <p className="muted">JPG, PNG, or WebP · up to 10 MB, resized automatically</p>
+                    {logoError ? <span className="field-error">{logoError}</span> : null}
+                    {errors.logo ? <span className="field-error">{errors.logo}</span> : null}
+                  </div>
+                  <div className="logo-actions">
+                    <button className="secondary" type="button" onClick={() => fileInput.current?.click()}>
+                      <Upload size={14} aria-hidden="true" />
+                      <span>Upload new</span>
+                    </button>
+                    {form.logo ? (
+                      <button
+                        className="secondary danger-text"
+                        type="button"
+                        onClick={() => setForm((current) => ({ ...current, logo: '' }))}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                        <span>Remove</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <input
+                    ref={fileInput}
+                    className="product-file-input"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={onLogoSelected}
+                  />
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <div className="settings-section-head">
+                  <h3>Shop details</h3>
+                  <p className="muted">The primary name, catalog category, and story for your brand.</p>
+                </div>
+                <div className="form-grid">
+                  <label>
+                    <div className="label-header">
+                      <span>Business name</span>
+                      <span className="field-required">*</span>
+                    </div>
+                    <input
+                      name="name"
+                      value={form.name}
+                      onChange={update}
+                      required
+                      maxLength={80}
+                      placeholder="e.g. Clay & Craft Studio"
+                    />
+                    {errors.name ? <span className="field-error">{errors.name}</span> : null}
+                  </label>
+                  <CategoryField
+                    className="wide"
+                    value={form.category}
+                    onChange={(category) => setForm((current) => ({ ...current, category }))}
+                    error={errors.category}
+                  />
+                  <label className="wide">
+                    <div className="label-header">
+                      <span>Description</span>
+                      <span className="char-count">{form.description.length}/300</span>
+                    </div>
+                    <textarea
+                      name="description"
+                      value={form.description}
+                      onChange={update}
+                      maxLength={300}
+                      rows={3}
+                      placeholder="A short line about your business, craft, or specialty."
+                    />
+                    {errors.description ? <span className="field-error">{errors.description}</span> : null}
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <div className="settings-section-head">
+                  <h3>Contact &amp; location</h3>
+                  <p className="muted">Direct contact channels shown to customers on order confirmations and invoice receipts.</p>
+                </div>
+                <div className="form-grid">
+                  <label>
+                    <span>Phone number</span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      value={form.phone}
+                      onChange={update}
+                      placeholder="98765 43210"
+                    />
+                    {errors.phone ? <span className="field-error">{errors.phone}</span> : null}
+                  </label>
+                  <label>
+                    <span>Business email</span>
+                    <input
+                      name="email"
+                      type="email"
+                      value={form.email}
+                      onChange={update}
+                      placeholder="hello@yourshop.com"
+                    />
+                    {errors.email ? <span className="field-error">{errors.email}</span> : null}
+                  </label>
+                  <label>
+                    <span>City</span>
+                    <input
+                      name="city"
+                      value={form.city}
+                      onChange={update}
+                      maxLength={60}
+                      placeholder="City or locality"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-info-banner">
+                <div className="settings-info-banner-content">
+                  <Info size={18} className="settings-info-banner-icon" aria-hidden="true" />
+                  <p className="muted">
+                    These business details may be displayed on your public storefront so customers can identify and contact
+                    your shop.
+                  </p>
+                </div>
+                {form.slug ? (
+                  <a className="secondary store-preview-link" href={publicPath} target="_blank" rel="noreferrer">
+                    <ExternalLink size={13} aria-hidden="true" />
+                    <span>Preview store</span>
+                  </a>
+                ) : null}
+              </div>
+
+              {user ? (
+                <div className="settings-owner-card">
+                  <div className="settings-owner-avatar">{initials(user?.name, 1)}</div>
+                  <div className="settings-owner-info">
+                    <div className="settings-owner-name-row">
+                      <strong className="settings-owner-name">{user?.name || 'Store Owner'}</strong>
+                      <span className="badge">Account Owner</span>
+                      {user?.emailVerified ? (
+                        <span className="badge green">Verified</span>
+                      ) : null}
+                    </div>
+                    <p className="settings-owner-email">{user?.email}</p>
+                  </div>
+                  <div className="settings-owner-note muted">
+                    Cove account
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           {tab === 'Storefront' ? (
@@ -892,8 +1264,8 @@ export default function SettingsPage() {
               ) : null}
             </div>
           ) : null}
-        </section>
-      </form>
+        </Panel>
+      </div>
     </>
   );
 }

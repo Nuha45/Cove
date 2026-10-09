@@ -259,6 +259,30 @@ async function resetPassword({ token, password }) {
   return { message: 'Your password has been reset. You can log in with your new password.' };
 }
 
+const WRONG_CURRENT_PASSWORD = 'Your current password is incorrect.';
+
+// Re-reads the user so the hash is never taken from the request-scoped document.
+async function changePassword(userId, { currentPassword, newPassword }) {
+  const user = await User.findById(userId).select('+passwordHash');
+  if (!user) {
+    throw new ApiError(401, 'Please log in to continue.');
+  }
+
+  const matches = await bcrypt.compare(String(currentPassword || ''), user.passwordHash);
+  if (!matches) {
+    throw new ApiError(400, WRONG_CURRENT_PASSWORD, [{ field: 'currentPassword', message: WRONG_CURRENT_PASSWORD }]);
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  user.passwordResetTokenHash = undefined;
+  user.passwordResetExpiresAt = undefined;
+  // Signs out every other session; the caller issues a fresh cookie for this one.
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+
+  return { user, token: signToken(user), message: 'Your password has been changed.' };
+}
+
 module.exports = {
   register,
   login,
@@ -266,6 +290,7 @@ module.exports = {
   revokeToken,
   requestPasswordReset,
   resetPassword,
+  changePassword,
   verifyEmail,
   resendEmailVerification,
   GENERIC_RESET_MESSAGE,

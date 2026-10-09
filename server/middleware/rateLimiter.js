@@ -161,6 +161,18 @@ const resendVerificationLimiter = rateLimit({
   },
 });
 
+// Runs after protect. Keyed per account so a stolen session cannot guess the current password quickly.
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `user:${req.user._id}`,
+  message: {
+    message: 'Too many password change attempts. Please wait a few minutes and try again.',
+  },
+});
+
 module.exports = authLimiter;
 module.exports.writeLimiter = writeLimiter;
 module.exports.exportLimiter = exportLimiter;
@@ -177,3 +189,4 @@ module.exports.forgotPasswordLimiter = forgotPasswordLimiter;
 module.exports.resetPasswordLimiter = resetPasswordLimiter;
 module.exports.verifyEmailLimiter = verifyEmailLimiter;
 module.exports.resendVerificationLimiter = resendVerificationLimiter;
+module.exports.changePasswordLimiter = changePasswordLimiter;

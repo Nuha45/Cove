@@ -59,6 +59,15 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+const changePassword = asyncHandler(async (req, res) => {
+  const result = await authService.changePassword(req.user._id, {
+    currentPassword: req.body.currentPassword,
+    newPassword: req.body.newPassword,
+  });
+  setAuthCookie(res, result.token);
+  res.json({ message: result.message, user: result.user.toPublic() });
+});
+
 const verifyEmail = asyncHandler(async (req, res) => {
   const result = await authService.verifyEmail(req.body.token);
   res.json(result);
@@ -76,6 +85,7 @@ module.exports = {
   me,
   forgotPassword,
   resetPassword,
+  changePassword,
   verifyEmail,
   resendVerification,
 };

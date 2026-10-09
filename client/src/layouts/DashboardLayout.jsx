@@ -51,7 +51,7 @@ export default function DashboardLayout() {
       });
     } catch {
       setPlan({
-        loading: false, advanced: false, inTrial: false, trialEnded: false, storePaused: false, access: 'ok', key: 'pro',
+        loading: false, error: true, advanced: false, inTrial: false, trialEnded: false, storePaused: false, access: 'ok', key: 'pro',
       });
     }
   }, []);

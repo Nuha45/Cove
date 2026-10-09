@@ -28,6 +28,10 @@ export function resetPassword(payload) {
   return api.post('/auth/reset-password', payload).then((res) => res.data);
 }
 
+export function changePassword(payload) {
+  return api.post('/auth/change-password', payload).then((res) => res.data);
+}
+
 export function verifyEmail(token) {
   return api.post('/auth/verify-email', { token }).then((res) => res.data);
 }
