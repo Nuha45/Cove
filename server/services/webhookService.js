@@ -4,6 +4,7 @@ const WebhookEvent = require('../models/WebhookEvent');
 const ApiError = require('../utils/ApiError');
 const { PROVIDER, mapRazorpayStatus } = require('../utils/subscriptionStatus');
 const razorpayService = require('./razorpayService');
+const subscriptionReceiptService = require('./subscriptionReceiptService');
 const { hasPaidAccess } = require('../utils/entitlements');
 
 function unixToDate(value) {
@@ -17,6 +18,10 @@ function extractSubscription(payload) {
   const entity = payload?.payload?.subscription?.entity;
   if (entity && entity.id) return entity;
   return null;
+}
+
+function extractPayment(payload) {
+  return payload?.payload?.payment?.entity || null;
 }
 
 function safeLog(eventType, details = {}) {
@@ -76,10 +81,11 @@ async function adoptOrphanedSubscription(entity, eventType) {
 const TERMINAL_PROVIDER_STATUSES = new Set(['cancelled', 'completed', 'expired']);
 const TERMINAL_EVENTS = new Set(['subscription.cancelled', 'subscription.completed']);
 
+// Returns the Cove subscription the event belongs to (even when its state is left unchanged), or null.
 async function applySubscriptionEntity(entity, eventType, eventAt = null) {
   if (!entity?.id) {
     safeLog(eventType, { result: 'ignored', reason: 'missing_subscription' });
-    return;
+    return null;
   }
 
   let subscription = await Subscription.findOne({ providerSubscriptionId: entity.id });
@@ -90,13 +96,13 @@ async function applySubscriptionEntity(entity, eventType, eventAt = null) {
       reason: 'unknown_subscription',
       providerSubscriptionId: entity.id,
     });
-    return;
+    return null;
   }
 
   // Razorpay retries can arrive after newer events. Never let an older event roll state back.
   if (eventAt && subscription.lastProviderEventAt && eventAt < subscription.lastProviderEventAt) {
     safeLog(eventType, { result: 'ignored', reason: 'stale_event', providerSubscriptionId: entity.id });
-    return;
+    return subscription;
   }
   // An ended Razorpay subscription cannot come back to life.
   if (
@@ -105,7 +111,7 @@ async function applySubscriptionEntity(entity, eventType, eventAt = null) {
     && !TERMINAL_EVENTS.has(eventType)
   ) {
     safeLog(eventType, { result: 'ignored', reason: 'subscription_ended', providerSubscriptionId: entity.id });
-    return;
+    return subscription;
   }
 
   const previousStatus = subscription.status;
@@ -170,6 +176,43 @@ async function applySubscriptionEntity(entity, eventType, eventAt = null) {
     providerSubscriptionId: entity.id,
     status: subscription.status,
   });
+  return subscription;
+}
+
+// Events that can report a charge. A subscription.authenticated payment is the mandate check and never
+// gets a receipt. subscription.updated reports an immediate upgrade's prorated charge.
+const RECEIPT_EVENTS = new Set([...PAYMENT_EVENTS, 'subscription.updated']);
+
+async function recordReceipt(subscription, entity, payload, eventType, eventAt) {
+  if (!RECEIPT_EVENTS.has(eventType)) return;
+  const plan = razorpayService.planKeyForProviderPlanId(entity.plan_id) || subscription.plan || 'pro';
+  const payment = subscriptionReceiptService.capturedPayment(extractPayment(payload));
+
+  let results = [];
+  if (payment) {
+    results = [await subscriptionReceiptService.recordPaymentForSubscription(subscription, {
+      providerSubscriptionId: entity.id,
+      plan,
+      payment,
+      paidAt: unixToDate(payment.created_at) || eventAt,
+      periodStartAt: unixToDate(entity.current_start),
+      periodEndAt: unixToDate(entity.current_end),
+    })];
+  } else if (eventType === 'subscription.updated') {
+    // No captured payment in the payload: Razorpay's paid invoices decide whether the update charged.
+    // A failure here fails the webhook, so Razorpay retries it instead of the charge going unrecorded.
+    results = await subscriptionReceiptService.reconcileRecentInvoices(subscription, {
+      providerSubscriptionId: entity.id,
+      plan,
+      eventAt,
+    });
+  }
+
+  results.forEach(({ receipt, created }) => safeLog(eventType, {
+    result: created ? 'receipt_created' : 'receipt_exists',
+    businessId: String(subscription.businessId),
+    receiptNumber: receipt.receiptNumber,
+  }));
 }
 
 const HANDLED_EVENTS = new Set([
@@ -218,7 +261,8 @@ async function processRazorpayWebhook({ rawBody, signature, eventIdHeader }) {
   const eventAt = unixToDate(payload.created_at);
   try {
     if (eventType === 'subscription.resumed' && entity) entity.status = 'active';
-    await applySubscriptionEntity(entity, eventType, eventAt);
+    const subscription = await applySubscriptionEntity(entity, eventType, eventAt);
+    if (subscription) await recordReceipt(subscription, entity, payload, eventType, eventAt);
   } catch (err) {
     // Release the claim so Razorpay's retry of this event is processed instead of skipped.
     await WebhookEvent.deleteOne({ provider: PROVIDER, eventId: String(eventId) }).catch(() => {});

@@ -3,6 +3,7 @@ import { Check, CreditCard } from 'lucide-react';
 import { Link, useOutletContext } from 'react-router-dom';
 import PageIntro from '../components/ui/PageIntro';
 import Badge from '../components/ui/Badge';
+import PaymentHistory from '../components/billing/PaymentHistory';
 import { cancelSubscription, getBilling, startSubscription } from '../services/billingService';
 import { formatEyebrowDate, formatOrderDate, formatPrice } from '../utils/display';
 import { getErrorMessage } from '../utils/errors';
@@ -373,6 +374,8 @@ export default function BillingPage() {
               );
             })}
           </div>
+
+          <PaymentHistory notify={notify} />
 
           <p className="muted billing-footnote">
             Nothing is charged when the free trial ends unless you choose a plan. An upgrade to Cove Plus takes effect

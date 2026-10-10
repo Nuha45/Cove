@@ -9,6 +9,14 @@ export function startSubscription(plan = 'pro') {
   return api.post('/billing/subscription', { plan }).then((res) => res.data);
 }
 
+export function listBillingReceipts(params) {
+  return api.get('/billing/receipts', { params }).then((res) => res.data);
+}
+
+export function getBillingReceiptInvoice(receiptId) {
+  return api.get(`/billing/receipts/${encodeURIComponent(receiptId)}/invoice`).then((res) => res.data);
+}
+
 export function cancelSubscription() {
   return api.post('/billing/subscription/cancel', {}).then((res) => res.data);
 }

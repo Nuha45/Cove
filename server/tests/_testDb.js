@@ -4,35 +4,10 @@ const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
+const { mongoIdentity, sameDatabase } = require('../config/databaseUri');
 
 const MODELS_DIR = path.join(__dirname, '..', 'models');
 const MISSING_MESSAGE = 'TEST_MONGODB_URI is required for tests. Tests must never use MONGODB_URI.';
-
-// Returns { scheme, hosts, dbName } with formatting, credentials and options stripped,
-// so equivalent connection strings compare equal.
-function mongoIdentity(uri) {
-  const match = /^(mongodb(?:\+srv)?):\/\/(?:[^@/]*@)?([^/?#]+)(?:\/([^?#]*))?/i.exec(String(uri || '').trim());
-  if (!match) {
-    throw new Error('Not a MongoDB connection string.');
-  }
-  const scheme = match[1].toLowerCase();
-  const hosts = match[2]
-    .split(',')
-    .map((host) => host.trim().toLowerCase())
-    .filter(Boolean)
-    .map((host) => (scheme === 'mongodb' && !/:\d+$/.test(host) ? `${host}:27017` : host))
-    .sort();
-  const dbName = decodeURIComponent(match[3] || '').trim();
-  return { scheme, hosts, dbName };
-}
-
-// MongoDB treats database names case-insensitively for uniqueness. An SRV record and a plain host
-// list cannot be compared without DNS, so the same database name on both is treated as the same.
-function sameDatabase(a, b) {
-  if (a.dbName.toLowerCase() !== b.dbName.toLowerCase()) return false;
-  if (a.scheme !== b.scheme) return true;
-  return a.hosts.some((host) => b.hosts.includes(host));
-}
 
 function resolveTestDatabase(source = process.env) {
   const uri = String(source.TEST_MONGODB_URI || '').trim();

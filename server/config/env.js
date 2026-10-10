@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const { resolveAppDatabase } = require('./databaseUri');
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -29,19 +30,9 @@ const jwtDuration = parseDuration(process.env.JWT_EXPIRES_IN || '7d');
 const jwtSecret = requireEnv('JWT_SECRET');
 // Automated tests connect only through tests/_testDb.js (TEST_MONGODB_URI), never through MONGODB_URI.
 const testMode = process.env.COVE_TEST_MODE === 'true';
-const mongoUri = testMode ? '' : requireEnv('MONGODB_URI');
-
-const placeholderUri = !testMode && (mongoUri.includes('USER:PASSWORD')
-  || mongoUri.includes('<password>')
-  || mongoUri.includes('CLUSTER.mongodb.net')
-  || mongoUri.includes('127.0.0.1')
-  || mongoUri.includes('localhost'));
-
-if (placeholderUri) {
-  throw new Error(
-    'MONGODB_URI is not a real Atlas connection string. Paste it into server/.env from Atlas -> Connect -> Drivers.'
-  );
-}
+// Production uses MONGODB_URI; development uses DEV_MONGODB_URI and refuses the production database.
+const database = resolveAppDatabase(process.env);
+const mongoUri = database.uri;
 
 if (jwtSecret.length < 32 || jwtSecret.includes('replace-with')) {
   throw new Error('JWT_SECRET must be a real secret of at least 32 characters.');
@@ -105,6 +96,8 @@ module.exports = {
   isProduction,
   port: Number(process.env.PORT) || 5000,
   mongoUri,
+  mongoDbName: database.dbName,
+  mongoUriVariable: database.variable,
   testMode,
   jwtSecret,
   jwtExpiresIn: jwtDuration.expiresIn,

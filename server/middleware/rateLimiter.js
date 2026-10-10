@@ -35,6 +35,18 @@ const exportLimiter = rateLimit({
   },
 });
 
+// Each subscription invoice lookup calls Razorpay. Runs after protect, so it is keyed per shop.
+const billingInvoiceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `business:${req.businessId}`,
+  message: {
+    message: 'Too many invoice requests. Please wait a few minutes and try again.',
+  },
+});
+
 const publicOrderLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -176,6 +188,7 @@ const changePasswordLimiter = rateLimit({
 module.exports = authLimiter;
 module.exports.writeLimiter = writeLimiter;
 module.exports.exportLimiter = exportLimiter;
+module.exports.billingInvoiceLimiter = billingInvoiceLimiter;
 module.exports.publicOrderLimiter = publicOrderLimiter;
 module.exports.publicWantLimiter = publicWantLimiter;
 module.exports.publicWantBoardLimiter = publicWantBoardLimiter;

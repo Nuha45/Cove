@@ -68,6 +68,9 @@ function fakeClient() {
         return { ...sub };
       },
     },
+    invoices: {
+      all: async () => ({ entity: 'collection', count: 0, items: [] }),
+    },
   };
 }
 

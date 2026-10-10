@@ -7,6 +7,7 @@ const {
   resolveTestDatabase,
   assertTestDatabase,
 } = require('./_testDb');
+const { DEV_MISSING_MESSAGE, resolveAppDatabase } = require('../config/databaseUri');
 
 // Fake URIs only. These tests never open a database connection.
 const PROD = 'mongodb+srv://produser:prodpass@cluster0.abcde.mongodb.net/cove?retryWrites=true&w=majority';
@@ -92,5 +93,78 @@ describe('test database isolation', () => {
     assert.throws(() => assertTestDatabase(connectedTo('cove_test_other'), 'cove_test'), /Refusing/);
     assert.throws(() => assertTestDatabase(connectedTo('cove'), 'cove'), /Refusing/);
     assert.throws(() => assertTestDatabase({}, 'cove_test'), /Refusing to touch database "unknown"/);
+  });
+});
+
+describe('app database selection', () => {
+  const DEV = 'mongodb+srv://devuser:devpass@cluster0.abcde.mongodb.net/cove_dev?retryWrites=true';
+
+  it('production connects to MONGODB_URI only', () => {
+    assert.deepEqual(
+      resolveAppDatabase({ NODE_ENV: 'production', MONGODB_URI: PROD, DEV_MONGODB_URI: DEV }),
+      { uri: PROD, dbName: 'cove', variable: 'MONGODB_URI' }
+    );
+    assert.throws(() => resolveAppDatabase({ NODE_ENV: 'production', DEV_MONGODB_URI: DEV }), /MONGODB_URI is missing/);
+    assert.throws(
+      () => resolveAppDatabase({ NODE_ENV: 'production', MONGODB_URI: 'mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/cove' }),
+      /not a real Atlas connection string/
+    );
+    assert.throws(
+      () => resolveAppDatabase({ NODE_ENV: 'production', MONGODB_URI: 'mongodb://127.0.0.1:27017/cove' }),
+      /not a real Atlas connection string/
+    );
+  });
+
+  it('development never falls back to MONGODB_URI', () => {
+    for (const nodeEnv of [undefined, '', 'development', 'staging']) {
+      assert.throws(() => resolveAppDatabase({ NODE_ENV: nodeEnv, MONGODB_URI: PROD }), { message: DEV_MISSING_MESSAGE }, String(nodeEnv));
+      assert.throws(() => resolveAppDatabase({ NODE_ENV: nodeEnv, MONGODB_URI: PROD, DEV_MONGODB_URI: '  ' }), { message: DEV_MISSING_MESSAGE });
+    }
+  });
+
+  it('development refuses the production database however it is written', () => {
+    const production = [
+      PROD,
+      'mongodb+srv://otheruser:otherpass@CLUSTER0.ABCDE.MONGODB.NET/cove',
+      'mongodb+srv://cluster0.abcde.mongodb.net/COVE?appName=dev',
+      'mongodb://cluster0-shard-00-00.abcde.mongodb.net:27017/cove?ssl=true',
+    ];
+    for (const candidate of production) {
+      assert.throws(
+        () => resolveAppDatabase({ NODE_ENV: 'development', MONGODB_URI: PROD, DEV_MONGODB_URI: candidate }),
+        /points to the production database/,
+        candidate
+      );
+    }
+  });
+
+  it('development requires a named, real development database', () => {
+    assert.throws(
+      () => resolveAppDatabase({ MONGODB_URI: PROD, DEV_MONGODB_URI: 'mongodb+srv://u:p@cluster0.abcde.mongodb.net/' }),
+      /must name a development database/
+    );
+    assert.throws(
+      () => resolveAppDatabase({ DEV_MONGODB_URI: 'mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/cove_dev' }),
+      /placeholder values/
+    );
+    assert.throws(() => resolveAppDatabase({ DEV_MONGODB_URI: 'postgres://x/cove_dev' }), /not a valid MongoDB/);
+  });
+
+  it('development accepts a separate database on the same cluster, another cluster or locally', () => {
+    assert.deepEqual(
+      resolveAppDatabase({ NODE_ENV: 'development', MONGODB_URI: PROD, DEV_MONGODB_URI: DEV }),
+      { uri: DEV, dbName: 'cove_dev', variable: 'DEV_MONGODB_URI' }
+    );
+    const otherCluster = 'mongodb+srv://u:p@cove-dev.xyz12.mongodb.net/cove';
+    assert.equal(resolveAppDatabase({ MONGODB_URI: PROD, DEV_MONGODB_URI: otherCluster }).dbName, 'cove');
+    const local = 'mongodb://127.0.0.1:27017/cove_dev';
+    assert.equal(resolveAppDatabase({ DEV_MONGODB_URI: local }).variable, 'DEV_MONGODB_URI');
+  });
+
+  it('test mode exposes no app database at all', () => {
+    assert.deepEqual(
+      resolveAppDatabase({ COVE_TEST_MODE: 'true', NODE_ENV: 'production', MONGODB_URI: PROD, DEV_MONGODB_URI: DEV }),
+      { uri: '', dbName: '', variable: '' }
+    );
   });
 });

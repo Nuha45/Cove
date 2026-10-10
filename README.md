@@ -13,6 +13,21 @@ This app uses MongoDB Atlas. There is no local database to install.
 3. In Atlas Network Access, allow your current IP address.
 4. Paste the string into `MONGODB_URI` in `server/.env`. Use the database name `cove`.
 
+### Local development database
+
+Only `NODE_ENV=production` connects to `MONGODB_URI`. Any other `NODE_ENV` (including `development`)
+connects to `DEV_MONGODB_URI` instead, so a local server can never write to production data:
+
+```bash
+DEV_MONGODB_URI=mongodb+srv://DEV_USER:DEV_PASSWORD@CLUSTER.mongodb.net/cove_dev?retryWrites=true&w=majority
+```
+
+- The API refuses to start if `DEV_MONGODB_URI` is missing, has no database name, or points to the same
+  database as `MONGODB_URI` (compared like the test database below). It never falls back to `MONGODB_URI`.
+- Use a separate database such as `cove_dev`, ideally with an Atlas user that has `readWrite` on `cove_dev` only.
+  Subscription receipts use transactions, so use Atlas or a local replica set rather than a standalone `mongod`.
+- A local machine does not need `MONGODB_URI` at all unless it runs production scripts (see Cove Admin below).
+
 ### Automated tests
 
 Tests never use `MONGODB_URI`. They connect only to `TEST_MONGODB_URI`, a separate database whose
@@ -81,15 +96,18 @@ The private admin area lives at `/admin`. It is separate from seller dashboards,
 Nobody can become an admin through the app. Registration always creates a normal seller, and there is no API endpoint that grants admin access. To promote the Cove owner's existing account:
 
 1. Register (or log in) normally with the owner's email so the account exists.
-2. On a machine that has the production `server/.env` (with `MONGODB_URI`), run from the `server` folder:
+2. On a machine that has the production `server/.env` (with `MONGODB_URI` and `CLIENT_ORIGIN`), run from the
+   `server` folder with `NODE_ENV=production`, which is the only mode that connects to `MONGODB_URI`:
 
 ```bash
-node scripts/promote-admin.js owner@example.com
+NODE_ENV=production node scripts/promote-admin.js owner@example.com
 ```
+
+In PowerShell: `$env:NODE_ENV='production'; node scripts/promote-admin.js owner@example.com; Remove-Item Env:NODE_ENV`.
 
 3. Log out and back in (or refresh). A **Cove Admin** link appears in the sidebar.
 
-To remove admin access: `node scripts/promote-admin.js owner@example.com --revoke`. This takes effect on the next request because the server reloads the user on every call.
+To remove admin access: `NODE_ENV=production node scripts/promote-admin.js owner@example.com --revoke`. This takes effect on the next request because the server reloads the user on every call.
 
 Keep database credentials limited to trusted operators. Anyone who can write to the database can change this flag.
 

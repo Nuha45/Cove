@@ -5942,6 +5942,7 @@ a.store-link, .store-link {
 .plan-card > .secondary { width: 100%; justify-content: center; }
 .plan-card-note { margin: -6px 0 0; font-size: 11px; }
 .billing-footnote { margin: 16px 2px 0; font-size: 11px; line-height: 1.5; }
+.billing-history { margin-top: 20px; }
 
 /* Analytics */
 .analytics-toolbar {

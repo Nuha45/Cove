@@ -149,6 +149,45 @@ async function cancelSubscription(providerSubscriptionId, { cancelAtCycleEnd = f
   }
 }
 
+const INVOICE_UNAVAILABLE = 'We could not load this invoice right now. Please try again in a few minutes.';
+
+// Razorpay answers 400 (or 404) for an id it does not know.
+function isUnknownId(err) {
+  return err?.statusCode === 400 || err?.statusCode === 404;
+}
+
+async function fetchInvoice(invoiceId) {
+  const api = getClient();
+  try {
+    return await api.invoices.fetch(invoiceId);
+  } catch (err) {
+    if (isUnknownId(err)) return null;
+    throw providerError('fetch_invoice', err, INVOICE_UNAVAILABLE);
+  }
+}
+
+async function fetchPayment(paymentId) {
+  const api = getClient();
+  try {
+    return await api.payments.fetch(paymentId);
+  } catch (err) {
+    if (isUnknownId(err)) return null;
+    throw providerError('fetch_payment', err, INVOICE_UNAVAILABLE);
+  }
+}
+
+// One page of a subscription's invoices.
+async function listSubscriptionInvoices(providerSubscriptionId, { count = 50, skip = 0 } = {}) {
+  const api = getClient();
+  try {
+    const result = await api.invoices.all({ subscription_id: providerSubscriptionId, count, skip });
+    return Array.isArray(result?.items) ? result.items : [];
+  } catch (err) {
+    if (isUnknownId(err)) return [];
+    throw providerError('list_invoices', err, INVOICE_UNAVAILABLE);
+  }
+}
+
 module.exports = {
   getClient,
   setClientForTests,
@@ -158,6 +197,9 @@ module.exports = {
   changeSubscriptionPlan,
   cancelScheduledChanges,
   cancelSubscription,
+  fetchInvoice,
+  fetchPayment,
+  listSubscriptionInvoices,
   planIdFor,
   planKeyForProviderPlanId,
   isPlanConfigured,
