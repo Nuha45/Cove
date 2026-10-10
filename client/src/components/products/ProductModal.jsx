@@ -28,6 +28,8 @@ export default function ProductModal({ product, onClose, onSaved }) {
     setSubmitting(true);
     try {
       const payload = productPayload(form);
+      // Stock is saved as an absolute value; resending the count loaded with the form would undo sales made since.
+      if (editing && payload.stockQuantity === product.stockQuantity) delete payload.stockQuantity;
       const result = editing
         ? await updateProduct(product.id, payload)
         : await createProduct(payload);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
-import { createStoreOrder } from '../../services/storeService';
+import { createStoreOrder, getStoreProduct } from '../../services/storeService';
 import { formatPrice } from '../../utils/display';
 import { getErrorMessage, getFieldErrors } from '../../utils/errors';
 import { enabledCheckoutMethods, paymentMethodIcon } from '../../utils/payments';
@@ -17,11 +17,32 @@ function newCheckoutKey() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+const PRICE_CHECK_TIMEOUT_MS = 8000;
+
+// The current product, null when the shop no longer sells it, or undefined when it could not be checked.
+function latestProduct(slug, productId) {
+  const lookup = getStoreProduct(slug, productId)
+    .then((result) => result?.product)
+    .catch((err) => (err?.response?.status === 404 ? null : undefined));
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => resolve(undefined), PRICE_CHECK_TIMEOUT_MS);
+  });
+  return Promise.race([lookup, timeout]);
+}
+
+function cartChangeMessages({ priceChanged, removed, reduced }) {
+  return [
+    priceChanged.length ? `Price updated: ${priceChanged.join(', ')}.` : '',
+    removed.length ? `No longer available, removed: ${removed.join(', ')}.` : '',
+    reduced.length ? `Quantity lowered to what is in stock: ${reduced.join(', ')}.` : '',
+  ].filter(Boolean);
+}
+
 export default function StoreCheckoutPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { business } = useOutletContext();
-  const { items, subtotal, clear } = useCart();
+  const { items, subtotal, clear, syncItems } = useCart();
   const currency = business?.currency || 'INR';
   const pickupEnabled = business?.pickupEnabled !== false;
   const deliveryEnabled = business?.deliveryEnabled !== false;
@@ -51,6 +72,28 @@ export default function StoreCheckoutPage() {
   // Reused for retries of this checkout so a lost response can never place the order twice.
   const [checkoutKey] = useState(newCheckoutKey);
   const errorRef = useRef(null);
+  // The cart keeps the price seen when an item was added; the total shown here must match what the order charges.
+  const [checkingPrices, setCheckingPrices] = useState(items.length > 0);
+  const [cartChanges, setCartChanges] = useState([]);
+  const cartAtOpen = useRef({ items, syncItems });
+
+  useEffect(() => {
+    let active = true;
+    const ids = cartAtOpen.current.items.map((item) => item.productId);
+    if (!ids.length) return undefined;
+    Promise.all(ids.map((id) => latestProduct(slug, id))).then((products) => {
+      if (!active) return;
+      const latest = {};
+      products.forEach((product, index) => {
+        if (product !== undefined) latest[ids[index]] = product;
+      });
+      setCartChanges(cartChangeMessages(cartAtOpen.current.syncItems(latest)));
+      setCheckingPrices(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [slug]);
 
   useEffect(() => {
     if (formError && typeof errorRef.current?.scrollIntoView === 'function') {
@@ -174,6 +217,7 @@ export default function StoreCheckoutPage() {
     return (
       <div className="store-panel">
         <h1>Checkout</h1>
+        {cartChanges.map((message) => <p className="form-notice" role="status" key={message}>{message}</p>)}
         <p>Your cart is empty. Add a product before checking out.</p>
         <Link className="primary" to={`/store/${slug}`}>Browse products</Link>
       </div>
@@ -373,6 +417,12 @@ export default function StoreCheckoutPage() {
         <aside className="store-card store-checkout-summary">
           <h2>Order summary</h2>
           <p className="muted">Seller: {business?.name}</p>
+          {cartChanges.length ? (
+            <div className="form-notice" role="status">
+              <strong>Your cart was updated to the shop&apos;s current details.</strong>
+              {cartChanges.map((message) => <p key={message}>{message}</p>)}
+            </div>
+          ) : null}
           {items.map((item) => (
             <div className="store-summary-line" key={item.productId}>
               <span>{item.name} × {item.quantity}</span>
@@ -391,8 +441,8 @@ export default function StoreCheckoutPage() {
             After you place the order, you will see payment details on the next page. Payment stays
             pending until the seller confirms they received it.
           </p>
-          <button className="primary" type="submit" disabled={submitting}>
-            {submitting ? 'Placing order...' : 'Place order'}
+          <button className="primary" type="submit" disabled={submitting || checkingPrices}>
+            {submitting ? 'Placing order...' : checkingPrices ? 'Checking prices...' : 'Place order'}
           </button>
           <p className="muted store-checkout-legal">
             Your order details will be shared with {business?.name || 'this shop'} so they can process and fulfil your

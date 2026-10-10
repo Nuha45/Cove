@@ -188,7 +188,7 @@ export default function StoreProductPage() {
                     onChange={(event) => {
                       const next = Number(event.target.value);
                       if (!Number.isFinite(next)) return;
-                      setQuantity(Math.min(max, Math.max(1, next)));
+                      setQuantity(Math.min(max, Math.max(1, Math.floor(next))));
                     }}
                   />
                   <button

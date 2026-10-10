@@ -1,8 +1,13 @@
+// Hosting runs on UTC; day buckets must still follow the shop's analytics time zone.
+process.env.TZ = 'UTC';
+
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const mongoose = require('mongoose');
 const { connectTestDB } = require('./_testDb');
+const env = require('../config/env');
+const { resolveRange } = require('../utils/dateRange');
 const app = require('../app');
 const User = require('../models/User');
 const Order = require('../models/Order');
@@ -255,5 +260,25 @@ describe('analytics', { timeout: 180000 }, () => {
     });
     assert.equal(forged.status, 200);
     assert.equal(forged.data.analytics.summary.totalSales, 900);
+  });
+
+  it('counts an order just after local midnight as today on a UTC server', async () => {
+    const seller = await registerTenant('localday');
+    const mug = await addProduct(seller.token, { name: 'Midnight Mug', price: 100, stockQuantity: 5, status: 'Active' });
+    const placed = await api('POST', '/api/orders', { token: seller.token, body: orderBody(mug.id, 1) });
+    assert.equal(placed.status, 201, JSON.stringify(placed.data));
+    const localToday = resolveRange({ range: 'today' }, { timeZone: env.analyticsTimeZone });
+    const createdAt = new Date(Math.min(localToday.start.getTime() + 60 * 1000, Date.now()));
+    await Order.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(placed.data.order.id) },
+      { $set: { createdAt } }
+    );
+
+    const response = await api('GET', '/api/analytics', { token: seller.token });
+    assert.equal(response.status, 200);
+    assert.equal(response.data.analytics.summary.salesToday, 100);
+    const trendToday = response.data.analytics.salesTrend.at(-1);
+    assert.equal(trendToday.date, localToday.to);
+    assert.equal(trendToday.sales, 100);
   });
 });

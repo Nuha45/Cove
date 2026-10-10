@@ -146,6 +146,7 @@ export default function StoreConfirmationPage() {
   const canSubmitReference = ['Payment Pending', 'Pending', 'Payment Submitted'].includes(order.paymentStatus)
     && order.status !== 'Cancelled'
     && !isCashOnDelivery
+    && !business?.paused
     && Boolean(token);
   const hasConfigured = payments?.hasConfiguredMethod;
   const isPaid = order.paymentStatus === 'Paid';

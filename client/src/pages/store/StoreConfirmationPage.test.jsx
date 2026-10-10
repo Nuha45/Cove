@@ -73,6 +73,21 @@ describe('StoreConfirmationPage cash on delivery', () => {
     expect(screen.queryByText('Next step: pay Cash Kitchen on delivery')).toBeNull();
   });
 
+  it('hides the reference form while the shop is paused, since the server refuses it', async () => {
+    const data = confirmation({ paymentMethod: 'payment_link' });
+    data.business.paused = true;
+    vi.mocked(getStoreOrderConfirmation).mockResolvedValue(data);
+    render(
+      <MemoryRouter initialEntries={['/store/cash-kitchen/order/COV-1001?c=token123']}>
+        <Routes>
+          <Route path="/store/:slug/order/:orderNumber" element={<StoreConfirmationPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    await screen.findByText('Order details');
+    expect(screen.queryByRole('button', { name: 'Submit payment reference' })).toBeNull();
+  });
+
   it('shows the estimated delivery saved on the order', async () => {
     await renderPage({ paymentMethod: 'cash_on_delivery', deliveryEstimate: { text: '2–3 days', note: 'Weekends may take longer.' } });
     expect(screen.getByText('Estimated delivery')).toBeTruthy();

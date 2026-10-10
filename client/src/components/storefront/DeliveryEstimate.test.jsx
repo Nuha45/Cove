@@ -7,7 +7,10 @@ import { useCart } from '../../context/CartContext';
 import { previewDeliveryEstimate } from '../../utils/deliveryEstimate';
 
 vi.mock('../../context/CartContext', () => ({ useCart: vi.fn() }));
-vi.mock('../../services/storeService', () => ({ createStoreOrder: vi.fn() }));
+vi.mock('../../services/storeService', () => ({
+  createStoreOrder: vi.fn(),
+  getStoreProduct: vi.fn(() => new Promise(() => {})),
+}));
 
 const NOTE = 'Orders placed before 2 PM are usually delivered the same day.';
 
@@ -16,6 +19,7 @@ function renderCheckout(business) {
     items: [{ productId: 'p1', name: 'Gift Box', price: 500, quantity: 1 }],
     subtotal: 500,
     clear: vi.fn(),
+    syncItems: vi.fn(() => ({ priceChanged: [], removed: [], reduced: [] })),
   });
   const view = render(
     <MemoryRouter initialEntries={['/store/eta/checkout']}>

@@ -4,7 +4,9 @@ const OrderCounter = require('../models/OrderCounter');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
 const Business = require('../models/Business');
+const env = require('../config/env');
 const ApiError = require('../utils/ApiError');
+const { resolveRange } = require('../utils/dateRange');
 const {
   canTransition,
   transitionMessage,
@@ -49,9 +51,7 @@ function ensureReady() {
 }
 
 function startOfToday() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return start;
+  return resolveRange({ range: 'today' }, { timeZone: env.analyticsTimeZone }).start;
 }
 
 async function nextOrderNumber(businessId, session) {

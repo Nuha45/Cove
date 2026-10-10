@@ -7,6 +7,8 @@ const razorpayService = require('./razorpayService');
 const subscriptionReceiptService = require('./subscriptionReceiptService');
 const { hasPaidAccess } = require('../utils/entitlements');
 
+const ACTIVATED_STATUSES = new Set(['active', 'past_due', 'halted']);
+
 function unixToDate(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -102,6 +104,11 @@ async function applySubscriptionEntity(entity, eventType, eventAt = null) {
   // Razorpay retries can arrive after newer events. Never let an older event roll state back.
   if (eventAt && subscription.lastProviderEventAt && eventAt < subscription.lastProviderEventAt) {
     safeLog(eventType, { result: 'ignored', reason: 'stale_event', providerSubscriptionId: entity.id });
+    return subscription;
+  }
+  // The one-time mandate check can arrive after activation with the same timestamp; it must not undo a paid state.
+  if (eventType === 'subscription.authenticated' && ACTIVATED_STATUSES.has(subscription.status)) {
+    safeLog(eventType, { result: 'ignored', reason: 'already_activated', providerSubscriptionId: entity.id });
     return subscription;
   }
   // An ended Razorpay subscription cannot come back to life.

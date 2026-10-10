@@ -1,40 +1,18 @@
 const mongoose = require('mongoose');
+const env = require('../config/env');
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const CustomerWant = require('../models/CustomerWant');
 const { STATUSES } = require('../utils/orderStatus');
 const { STATUSES: WANT_STATUSES } = require('../utils/customerWantStatus');
+const { resolveRange } = require('../utils/dateRange');
 
 function roundMoney(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
-function startOfDay(date = new Date()) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start;
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function dayKey(date) {
-  const d = new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function serverTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch {
-    return 'UTC';
-  }
+function dayLabel(key) {
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 function oid(businessId) {
@@ -45,9 +23,12 @@ const nonCancelled = { $ne: ['$status', 'Cancelled'] };
 
 async function getOverview(businessId) {
   const businessObjectId = oid(businessId);
-  const today = startOfDay();
-  const weekStart = startOfDay(addDays(today, -6));
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const timeZone = env.analyticsTimeZone;
+  const now = new Date();
+  const today = resolveRange({ range: 'today' }, { timeZone, now }).start;
+  const week = resolveRange({ range: '7d' }, { timeZone, now });
+  const weekStart = week.start;
+  const monthStart = resolveRange({ range: 'month' }, { timeZone, now }).start;
 
   const [orderStats] = await Order.aggregate([
     { $match: { businessId: businessObjectId } },
@@ -161,7 +142,6 @@ async function getOverview(businessId) {
   ]);
 
   const trendStart = weekStart;
-  const timeZone = serverTimeZone();
   const trendRows = await Order.aggregate([
     {
       $match: {
@@ -187,17 +167,12 @@ async function getOverview(businessId) {
   const trendMap = Object.fromEntries(
     trendRows.map((row) => [row._id, { sales: roundMoney(row.sales), orders: row.orders }])
   );
-  const salesTrend = [];
-  for (let i = 6; i >= 0; i -= 1) {
-    const date = addDays(today, -i);
-    const key = dayKey(date);
-    salesTrend.push({
-      date: key,
-      label: date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }),
-      sales: trendMap[key]?.sales || 0,
-      orders: trendMap[key]?.orders || 0,
-    });
-  }
+  const salesTrend = week.dayKeys.map((key) => ({
+    date: key,
+    label: dayLabel(key),
+    sales: trendMap[key]?.sales || 0,
+    orders: trendMap[key]?.orders || 0,
+  }));
 
   return {
     summary: {

@@ -7,16 +7,25 @@ import * as CartContextModule from '../../context/CartContext';
 
 vi.mock('../../services/storeService', () => ({
   createStoreOrder: vi.fn(),
+  getStoreProduct: vi.fn(async (slug, id) => ({
+    product: { id, name: 'Cotton Shirt', price: 500, available: true, stockQuantity: 10, images: [] },
+  })),
 }));
 
 const mockClear = vi.fn();
+const mockSyncItems = vi.fn(() => ({ priceChanged: [], removed: [], reduced: [] }));
 const mockCart = {
   items: [
     { productId: 'prod_1', name: 'Cotton Shirt', price: 500, quantity: 2 },
   ],
   subtotal: 1000,
   clear: mockClear,
+  syncItems: mockSyncItems,
 };
+
+function placeOrderButton() {
+  return screen.findByRole('button', { name: 'Place order' });
+}
 
 function defaultBusiness(overrides = {}) {
   return {
@@ -74,15 +83,17 @@ describe('StoreCheckoutPage', () => {
   });
 
   describe('delivery fee calculation', () => {
-    it('calculates zero delivery fee for Pickup and full delivery fee for Delivery', () => {
+    it('calculates zero delivery fee for Pickup and full delivery fee for Delivery', async () => {
       renderCheckout({
         business: defaultBusiness({ deliveryFee: 75, pickupEnabled: true, deliveryEnabled: true }),
         cart: {
           items: [{ productId: 'p1', name: 'Notebook', price: 200, quantity: 1 }],
           subtotal: 200,
           clear: mockClear,
+          syncItems: mockSyncItems,
         },
       });
+      await placeOrderButton();
 
       // Default is Pickup
       expect(screen.getByRole('combobox', { name: /How should we get this to you/i }).value).toBe('Pickup');
@@ -111,7 +122,7 @@ describe('StoreCheckoutPage', () => {
       });
 
       // Delivery is selected automatically since pickup is disabled
-      const submitButton = screen.getByRole('button', { name: 'Place order' });
+      const submitButton = await placeOrderButton();
       fireEvent.click(submitButton);
 
       expect(await screen.findByText('Please enter your name.')).toBeTruthy();
@@ -126,7 +137,7 @@ describe('StoreCheckoutPage', () => {
       fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Rohit Sharma' } });
       fireEvent.change(screen.getByLabelText(/^Phone/i), { target: { value: 'abc' } });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
+      fireEvent.click(await placeOrderButton());
 
       expect(await screen.findByText('Please enter a valid phone number.')).toBeTruthy();
       expect(createStoreOrder).not.toHaveBeenCalled();
@@ -160,7 +171,7 @@ describe('StoreCheckoutPage', () => {
       fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Anita Desai' } });
       fireEvent.change(screen.getByLabelText(/^Phone/i), { target: { value: '9876543210' } });
 
-      const submitBtn = screen.getByRole('button', { name: 'Place order' });
+      const submitBtn = await placeOrderButton();
 
       // First submit - fails with network error
       fireEvent.click(submitBtn);
@@ -198,7 +209,7 @@ describe('StoreCheckoutPage', () => {
       fireEvent.change(screen.getByLabelText(/Your name/i), { target: { value: 'Priya Patel' } });
       fireEvent.change(screen.getByLabelText(/^Phone/i), { target: { value: '+919876543210' } });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
+      fireEvent.click(await placeOrderButton());
 
       await waitFor(() => {
         expect(createStoreOrder).toHaveBeenCalledWith('artisan-co', expect.objectContaining({

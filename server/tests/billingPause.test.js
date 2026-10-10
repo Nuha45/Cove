@@ -64,6 +64,9 @@ function fakeClient() {
       cancelScheduledChanges: async (id) => ({ ...subs.get(id) }),
       cancel: async (id, atCycleEnd) => {
         const sub = subs.get(id) || { id };
+        if (sub.status === 'expired') {
+          throw Object.assign(new Error('Subscription is not cancellable in expired status.'), { statusCode: 400 });
+        }
         if (!atCycleEnd) sub.status = 'cancelled';
         return { ...sub };
       },
@@ -392,6 +395,35 @@ describe('billing required, security and AI removal', { timeout: 300000 }, () =>
       assert.equal(billing.data.store.paused, false);
     });
   
+    it('a mandate event delivered after activation in the same second keeps a paid store open', async () => {
+      const seller = await registerTenant('lateauth');
+      await expireTrial(seller);
+      const started = await api('POST', '/api/billing/subscription', { token: seller.token, body: { plan: 'pro' } });
+      assert.equal(started.status, 201, JSON.stringify(started.data));
+      const sub = await subscriptionOf(seller);
+      const at = new Date();
+      await sendWebhook('subscription.activated', periodEntity(sub), { createdAt: at });
+      await sendWebhook('subscription.authenticated', periodEntity(sub, { status: 'authenticated' }), { createdAt: at });
+      assert.equal((await subscriptionOf(seller)).status, 'active');
+      assert.equal(await storeIsOpen(seller), true);
+    });
+
+    it('cancelling an abandoned checkout works after Razorpay has expired it', async () => {
+      const seller = await registerTenant('abandoned');
+      await expireTrial(seller);
+      const started = await api('POST', '/api/billing/subscription', { token: seller.token, body: { plan: 'pro' } });
+      assert.equal(started.status, 201, JSON.stringify(started.data));
+      const sub = await subscriptionOf(seller);
+      assert.equal(sub.status, 'incomplete');
+      subs.get(sub.providerSubscriptionId).status = 'expired';
+
+      const cancelled = await api('POST', '/api/billing/subscription/cancel', { token: seller.token, body: {} });
+      assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+      const after = await subscriptionOf(seller);
+      assert.equal(after.status, 'incomplete');
+      assert.equal(after.providerSubscriptionId, '');
+    });
+
     it('Cove Plus ₹899 reopens the store with Cove Plus features', async () => {
       const seller = await registerTenant('plus');
       await expireTrial(seller);

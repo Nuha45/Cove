@@ -469,7 +469,9 @@ async function cancelSubscription(businessId) {
     }
   } else if (subscription.status === 'trialing' || subscription.status === 'incomplete') {
     // Nothing has been charged yet. Stop the checkout; a running free trial carries on.
-    await razorpayService.cancelSubscription(subscription.providerSubscriptionId, { cancelAtCycleEnd: false });
+    const cancelling = razorpayService.cancelSubscription(subscription.providerSubscriptionId, { cancelAtCycleEnd: false });
+    // An abandoned checkout may already have expired at Razorpay, which rejects the cancel.
+    await (subscription.status === 'incomplete' ? cancelling.catch(() => null) : cancelling);
     detachProviderSubscription(subscription);
     subscription.lastProviderStatus = 'cancelled';
     subscription.cancelledAt = now;
