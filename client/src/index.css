@@ -3403,6 +3403,7 @@ nav a:hover, nav a.active, nav button:hover, nav button.active {
   gap: 11px;
   min-width: 0;
 }
+.store-brand > div { min-width: 0; }
 .store-brand strong, .store-brand small { display: block; }
 .store-brand strong {
   font-size: 15px;
