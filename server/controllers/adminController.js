@@ -9,6 +9,7 @@ const getOverview = asyncHandler(async (req, res) => {
 const listBusinesses = asyncHandler(async (req, res) => {
   const result = await adminService.listBusinesses({
     search: req.query.search,
+    filter: req.query.filter,
     page: req.query.page,
     limit: req.query.limit,
   });

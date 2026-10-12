@@ -6,6 +6,7 @@ import {
   setAdminBusinessOwnerAdmin,
 } from '../../services/adminService';
 import { getErrorMessage } from '../../utils/errors';
+import { formatShortDate } from '../../utils/adminDisplay';
 
 const COPY = {
   archive: {
@@ -63,7 +64,13 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone, 
   const typedMatches = confirmsEmail
     ? Boolean(expected) && confirmSlug.trim().toLowerCase() === expected.toLowerCase()
     : confirmSlug.trim() === expected;
-  const canSubmit = !submitting && (!needsTyping || typedMatches);
+  // The server re-checks on submit; this only stops an archive the page already knows will be refused.
+  // An unfinished checkout is not blocked: the server ends it at Razorpay before archiving.
+  const subscription = business.subscription || {};
+  const unfinishedCheckout = mode === 'archive' && Boolean(subscription.unfinishedCheckout);
+  const archiveBlocked = mode === 'archive' && Boolean(subscription.liveProviderSubscription) && !unfinishedCheckout;
+  const cancellingPaidPlan = archiveBlocked && subscription.cancelAtPeriodEnd && subscription.billingStatus === 'active';
+  const canSubmit = !submitting && !archiveBlocked && (!needsTyping || typedMatches);
 
   async function submit(event) {
     event.preventDefault();
@@ -100,6 +107,33 @@ export default function BusinessActionDialog({ business, mode, onClose, onDone, 
         <p className="eyebrow">{copy.eyebrow}</p>
         <h2 id="business-action-title">{copy.title(business.name)}</h2>
         <p className="muted">{copy.text}</p>
+        {mode === 'archive' ? (
+          cancellingPaidPlan ? (
+            <p className="admin-billing-warning blocked" role="alert">
+              This seller has paid until {formatShortDate(subscription.currentPeriodEndAt)} and their plan is set to
+              cancel then, so Razorpay will not charge again. Archiving is blocked because it would lock them out of
+              time they paid for. Archive once this page shows the plan as cancelled, or cancel it immediately in
+              Razorpay if you mean to end it now.
+            </p>
+          ) : archiveBlocked ? (
+            <p className="admin-billing-warning blocked" role="alert">
+              This shop has a Razorpay subscription that is not cancelled, so it can still charge the seller.
+              Archiving is blocked because the owner could not log in to cancel it. Cancel the subscription in
+              Razorpay first, then archive once this page shows it as cancelled.
+            </p>
+          ) : unfinishedCheckout ? (
+            <p className="admin-billing-warning">
+              Billing check: this shop has an unfinished Razorpay checkout that was never paid or authorised.
+              Archiving cancels it in Razorpay first, so it can never be completed. If Razorpay shows the seller did
+              set up payment, archiving is refused instead.
+            </p>
+          ) : (
+            <p className="admin-billing-warning">
+              Billing check: an archived owner cannot log in to manage or cancel their Cove plan. Archiving is
+              refused while the shop has a Razorpay subscription that is not cancelled.
+            </p>
+          )
+        ) : null}
         {needsTyping ? (
           <label className="confirm-type-field">
             Type <code>{expected}</code> exactly to confirm

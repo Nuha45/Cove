@@ -142,6 +142,12 @@ async function main() {
     process.exit(1);
   }
 
+  if (!options.write) {
+    // A dry run must not change the database at all, including building indexes or creating collections.
+    mongoose.set('autoIndex', false);
+    mongoose.set('autoCreate', false);
+  }
+
   console.log(`${options.write ? 'WRITE' : 'DRY RUN'} on database "${env.mongoDbName}" (${env.mongoUriVariable})`
     + `${options.shop ? ` for shop ${options.shop}` : ' for every shop'}`);
   await connectDB();

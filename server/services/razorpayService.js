@@ -156,6 +156,17 @@ function isUnknownId(err) {
   return err?.statusCode === 400 || err?.statusCode === 404;
 }
 
+// Null when Razorpay does not know the id.
+async function fetchSubscription(providerSubscriptionId) {
+  const api = getClient();
+  try {
+    return await api.subscriptions.fetch(providerSubscriptionId);
+  } catch (err) {
+    if (isUnknownId(err)) return null;
+    throw providerError('fetch_subscription', err, 'We could not reach Razorpay right now. Please try again in a few minutes.');
+  }
+}
+
 async function fetchInvoice(invoiceId) {
   const api = getClient();
   try {
@@ -197,6 +208,7 @@ module.exports = {
   changeSubscriptionPlan,
   cancelScheduledChanges,
   cancelSubscription,
+  fetchSubscription,
   fetchInvoice,
   fetchPayment,
   listSubscriptionInvoices,

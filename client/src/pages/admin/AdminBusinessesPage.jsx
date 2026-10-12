@@ -8,9 +8,35 @@ import BusinessActionDialog from '../../components/admin/BusinessActionDialog';
 import { listAdminBusinesses } from '../../services/adminService';
 import { formatEyebrowDate } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
-import { ACCOUNT_STATUS_TONE, formatShortDate } from '../../utils/adminDisplay';
+import {
+  ACCOUNT_STATUS_TONE,
+  BUSINESS_FILTERS,
+  STORE_STATE_TONE,
+  TRIAL_PAYMENT_LABELS,
+  formatShortDate,
+  missingSetupSteps,
+} from '../../utils/adminDisplay';
 
 const PAGE_SIZE = 20;
+
+function plural(count, word) {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+function activityText(business) {
+  const activity = business.lastSellerActivity;
+  return activity ? `${activity.label} · ${formatShortDate(activity.at)}` : 'No seller activity yet';
+}
+
+function countsText(business) {
+  const { counts } = business;
+  return `${plural(counts.activeProducts, 'active product')} · ${plural(counts.orders, 'order')}`;
+}
+
+function setupText(business) {
+  const missing = missingSetupSteps(business.setup);
+  return missing.length ? `Missing: ${missing.join(', ')}` : 'Setup complete';
+}
 
 export default function AdminBusinessesPage() {
   const [businesses, setBusinesses] = useState([]);
@@ -19,6 +45,7 @@ export default function AdminBusinessesPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
   const [loadState, setLoadState] = useState('loading');
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -36,12 +63,21 @@ export default function AdminBusinessesPage() {
     setReloadKey((key) => key + 1);
   }
 
-  function statusBadge(business) {
+  function statusBadges(business) {
     if (business.archivedAt) return <Badge tone="neutral">Archived</Badge>;
+    const { subscription, store } = business;
     return (
-      <Badge tone={ACCOUNT_STATUS_TONE[business.subscription.accountStatus] || 'neutral'}>
-        {business.subscription.accountStatusLabel}
-      </Badge>
+      <span className="admin-badges">
+        <Badge tone={ACCOUNT_STATUS_TONE[subscription.accountStatus] || 'neutral'}>
+          {subscription.accountStatusLabel}
+        </Badge>
+        {store.state !== 'live' ? (
+          <Badge tone={STORE_STATE_TONE[store.state] || 'neutral'}>{store.label}</Badge>
+        ) : null}
+        {subscription.trialPaymentMethod ? (
+          <small className="muted">{TRIAL_PAYMENT_LABELS[subscription.trialPaymentMethod]}</small>
+        ) : null}
+      </span>
     );
   }
 
@@ -96,7 +132,12 @@ export default function AdminBusinessesPage() {
     let cancelled = false;
     setLoadState('loading');
     setLoadError('');
-    listAdminBusinesses({ search: query || undefined, page, limit: PAGE_SIZE })
+    listAdminBusinesses({
+      search: query || undefined,
+      filter: filter === 'all' ? undefined : filter,
+      page,
+      limit: PAGE_SIZE,
+    })
       .then((result) => {
         if (cancelled) return;
         setBusinesses(result.businesses);
@@ -113,9 +154,9 @@ export default function AdminBusinessesPage() {
     return () => {
       cancelled = true;
     };
-  }, [query, page, reloadKey]);
+  }, [query, filter, page, reloadKey]);
 
-  const emptyBecauseFilter = total === 0 && query;
+  const emptyBecauseFilter = total === 0 && (query || filter !== 'all');
 
   return (
     <>
@@ -139,6 +180,19 @@ export default function AdminBusinessesPage() {
               maxLength={80}
             />
           </div>
+          <select
+            className="filter-select"
+            value={filter}
+            onChange={(event) => {
+              setFilter(event.target.value);
+              setPage(1);
+            }}
+            aria-label="Show businesses"
+          >
+            {BUSINESS_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </div>
 
         {loadState === 'loading' ? <div className="panel-state">Loading businesses...</div> : null}
@@ -156,7 +210,7 @@ export default function AdminBusinessesPage() {
           <div className="panel-state">
             <EmptyState
               title={emptyBecauseFilter ? 'No matching businesses' : 'No businesses yet'}
-              text={emptyBecauseFilter ? 'Try a different name or email.' : 'Businesses appear here as sellers sign up.'}
+              text={emptyBecauseFilter ? 'Try a different search or filter.' : 'Businesses appear here as sellers sign up.'}
             />
           </div>
         ) : null}
@@ -168,7 +222,9 @@ export default function AdminBusinessesPage() {
               <div className="table-head">
                 <span>Business</span>
                 <span>Owner</span>
-                <span className="col-center">Status</span>
+                <span>Status</span>
+                <span>Setup</span>
+                <span>Seller activity</span>
                 <span className="col-center">Joined</span>
                 <span className="col-action" aria-hidden="true" />
               </div>
@@ -180,9 +236,20 @@ export default function AdminBusinessesPage() {
                   </div>
                   <div className="admin-cell">
                     <strong>{business.owner?.name || '—'}</strong>
-                    <small>{business.owner?.email || 'No owner on file'}</small>
+                    <small>
+                      {business.owner?.email || 'No owner on file'}
+                      {business.owner && !business.owner.emailVerified ? ' · Not verified' : ''}
+                    </small>
                   </div>
-                  <span className="col-center">{statusBadge(business)}</span>
+                  <div>{statusBadges(business)}</div>
+                  <div className="admin-cell">
+                    <strong>{business.setup.done}/{business.setup.total}</strong>
+                    <small title={setupText(business)}>{setupText(business)}</small>
+                  </div>
+                  <div className="admin-cell">
+                    <strong>{countsText(business)}</strong>
+                    <small title={activityText(business)}>{activityText(business)}</small>
+                  </div>
                   <span className="col-center">{formatShortDate(business.createdAt)}</span>
                   <span className="col-action admin-row-actions">
                     <Link className="secondary tiny" to={`/admin/businesses/${business.id}`}>View</Link>
@@ -200,9 +267,14 @@ export default function AdminBusinessesPage() {
                       <strong>{business.name}</strong>
                       <small>{business.category}</small>
                     </div>
-                    {statusBadge(business)}
+                    {statusBadges(business)}
                   </div>
-                  <small>{business.owner?.email || 'No owner on file'} · Joined {formatShortDate(business.createdAt)}</small>
+                  <small>
+                    {business.owner?.email || 'No owner on file'}
+                    {business.owner && !business.owner.emailVerified ? ' (not verified)' : ''} · Joined {formatShortDate(business.createdAt)}
+                  </small>
+                  <small>Setup {business.setup.done}/{business.setup.total} · {setupText(business)}</small>
+                  <small>{countsText(business)} · {activityText(business)}</small>
                   <div className="admin-card-actions">
                     <Link className="secondary" to={`/admin/businesses/${business.id}`}>View business</Link>
                     {rowActions(business, { labels: true })}

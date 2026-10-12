@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import BusinessActionDialog from './BusinessActionDialog';
-import { deleteAdminBusiness, setAdminBusinessOwnerAdmin } from '../../services/adminService';
+import { archiveAdminBusiness, deleteAdminBusiness, setAdminBusinessOwnerAdmin } from '../../services/adminService';
 
 vi.mock('../../services/adminService', () => ({
   archiveAdminBusiness: vi.fn(),
@@ -86,6 +86,82 @@ describe('BusinessActionDialog delete seller account', () => {
     expect(deleteButton().disabled).toBe(false);
     rerender(<BusinessActionDialog business={{ ...BUSINESS, slug: 'nuha-gems' }} mode="delete" {...handlers} />);
     expect(deleteButton().disabled).toBe(true);
+  });
+});
+
+describe('BusinessActionDialog archive', () => {
+  function renderArchive(subscription) {
+    const handlers = { onClose: vi.fn(), onDone: vi.fn(), onFailed: vi.fn() };
+    render(<BusinessActionDialog business={{ ...BUSINESS, subscription }} mode="archive" {...handlers} />);
+    return handlers;
+  }
+
+  it('warns about billing before archiving a shop with no chargeable subscription', () => {
+    renderArchive({ liveProviderSubscription: false });
+    expect(screen.getByText(/Billing check: an archived owner cannot log in/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Archive shop' }).disabled).toBe(false);
+  });
+
+  it('blocks archiving upfront when the shop has a Razorpay subscription that can still charge', async () => {
+    const handlers = renderArchive({ liveProviderSubscription: true });
+    expect(screen.getByRole('alert').textContent).toMatch(/Cancel the subscription in Razorpay first/);
+    const button = screen.getByRole('button', { name: 'Archive shop' });
+    expect(button.disabled).toBe(true);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(archiveAdminBusiness).not.toHaveBeenCalled();
+    expect(handlers.onDone).not.toHaveBeenCalled();
+  });
+
+  it('allows archiving an unfinished checkout and says it will be cancelled in Razorpay first', async () => {
+    vi.mocked(archiveAdminBusiness).mockResolvedValue({ business: BUSINESS });
+    const handlers = renderArchive({ liveProviderSubscription: true, unfinishedCheckout: true, billingStatus: 'incomplete' });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(/unfinished Razorpay checkout/).textContent).toMatch(/cancels it in Razorpay first/);
+    const button = screen.getByRole('button', { name: 'Archive shop' });
+    expect(button.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(archiveAdminBusiness).toHaveBeenCalledWith(BUSINESS.id);
+    expect(handlers.onDone).toHaveBeenCalledWith('archive', { business: BUSINESS });
+  });
+
+  it('explains why a paid plan set to cancel at period end blocks archiving', () => {
+    renderArchive({
+      liveProviderSubscription: true,
+      billingStatus: 'active',
+      cancelAtPeriodEnd: true,
+      currentPeriodEndAt: '2026-11-05T00:00:00.000Z',
+    });
+    const alert = screen.getByRole('alert').textContent;
+    expect(alert).toMatch(/paid until 5 Nov 2026/);
+    expect(alert).toMatch(/Razorpay will not charge again/);
+    expect(screen.getByRole('button', { name: 'Archive shop' }).disabled).toBe(true);
+  });
+
+  it('shows no billing warning for other actions', () => {
+    render(<BusinessActionDialog business={{ ...BUSINESS, subscription: { liveProviderSubscription: true } }} mode="restore" onClose={vi.fn()} onDone={vi.fn()} />);
+    expect(screen.queryByText(/Billing check/)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Restore shop' }).disabled).toBe(false);
+  });
+
+  it('shows why the server refused to archive a shop with a live subscription', async () => {
+    const message = 'This shop still has a Razorpay subscription that can charge the seller. Archiving would lock them out before they could cancel it. Cancel the subscription in Razorpay first, then archive once this page shows it as cancelled.';
+    vi.mocked(archiveAdminBusiness).mockRejectedValue({ response: { status: 409, data: { message } } });
+    const handlers = { onClose: vi.fn(), onDone: vi.fn(), onFailed: vi.fn() };
+    render(<BusinessActionDialog business={BUSINESS} mode="archive" {...handlers} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Archive shop' }));
+    });
+    expect(archiveAdminBusiness).toHaveBeenCalledWith(BUSINESS.id);
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(handlers.onDone).not.toHaveBeenCalled();
+    expect(handlers.onFailed).toHaveBeenCalledWith('archive');
+    expect(screen.getByRole('button', { name: 'Archive shop' }).disabled).toBe(false);
   });
 });
 

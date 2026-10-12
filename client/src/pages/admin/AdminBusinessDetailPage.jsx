@@ -7,7 +7,15 @@ import BusinessActionDialog from '../../components/admin/BusinessActionDialog';
 import { getAdminBusiness } from '../../services/adminService';
 import { formatOrderDate } from '../../utils/display';
 import { getErrorMessage } from '../../utils/errors';
-import { ACCOUNT_STATUS_TONE, daysUntil, formatShortDate } from '../../utils/adminDisplay';
+import {
+  ACCOUNT_STATUS_TONE,
+  SETUP_STEP_LABELS,
+  STORE_STATE_TONE,
+  TRIAL_PAYMENT_LABELS,
+  daysUntil,
+  formatPaise,
+  formatShortDate,
+} from '../../utils/adminDisplay';
 
 const BILLING_LABELS = {
   none: 'No subscription record',
@@ -18,6 +26,15 @@ const BILLING_LABELS = {
   halted: 'Halted',
   cancelled: 'Cancelled',
 };
+
+function razorpayLabel(subscription) {
+  if (subscription.unfinishedCheckout) return 'Unfinished checkout: cannot charge unless the seller completes it';
+  if (!subscription.liveProviderSubscription) return 'None that can charge';
+  if (subscription.billingStatus === 'active' && subscription.cancelAtPeriodEnd) {
+    return 'Paid until the period ends, then cancels: will not charge again';
+  }
+  return 'Not cancelled: can still charge';
+}
 
 export default function AdminBusinessDetailPage() {
   const { id } = useParams();
@@ -65,6 +82,8 @@ export default function AdminBusinessDetailPage() {
 
   const subscription = business?.subscription;
   const trialDays = subscription?.accountStatus === 'trial' ? daysUntil(subscription.trialEndAt) : null;
+  const receipts = business?.receipts || { items: [], totals: [] };
+  const history = business?.adminHistory || [];
 
   return (
     <>
@@ -92,7 +111,7 @@ export default function AdminBusinessDetailPage() {
           <div className="stats-grid admin-count-grid">
             {[
               ['Products', business.counts.products, `${business.counts.activeProducts} active`],
-              ['Orders', business.counts.orders, 'All time'],
+              ['Orders', business.counts.orders, `${business.counts.storefrontOrders} from storefront`],
               ['Customers', business.counts.customers, 'All time'],
               ['Customer requests', business.counts.customerRequests, 'All time'],
             ].map(([label, value, hint]) => (
@@ -114,20 +133,63 @@ export default function AdminBusinessDetailPage() {
                 </div>
                 <div>
                   <dt>Owner email</dt>
-                  <dd>{business.owner?.email || '—'}</dd>
+                  <dd>
+                    {business.owner?.email || '—'}
+                    {business.owner ? (
+                      <>
+                        {' '}
+                        <Badge tone={business.owner.emailVerified ? 'green' : 'yellow'}>
+                          {business.owner.emailVerified ? 'Verified' : 'Not verified'}
+                        </Badge>
+                      </>
+                    ) : null}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Phone</dt>
+                  <dd>{business.phone || '—'}</dd>
                 </div>
                 <div>
                   <dt>Storefront</dt>
                   <dd>
-                    {business.archivedAt ? 'Archived' : business.storefrontActive ? 'Live' : 'Paused'} · /store/{business.slug}
+                    <Badge tone={STORE_STATE_TONE[business.store.state] || 'neutral'}>{business.store.label}</Badge>
+                    {' '}/store/{business.slug}
                   </dd>
                 </div>
                 <div>
                   <dt>Created</dt>
                   <dd>{formatShortDate(business.createdAt)}</dd>
                 </div>
+                <div>
+                  <dt>First storefront order</dt>
+                  <dd>{business.firstStorefrontOrderAt ? formatShortDate(business.firstStorefrontOrderAt) : 'None yet'}</dd>
+                </div>
                 <div className="wide">
-                  <dt>Last activity</dt>
+                  <dt>Setup ({business.setup.done}/{business.setup.total})</dt>
+                  <dd>
+                    <ul className="admin-setup-list">
+                      {Object.entries(SETUP_STEP_LABELS).map(([key, label]) => (
+                        <li key={key} className={business.setup[key] ? 'done' : 'missing'}>
+                          {business.setup[key] ? '✓' : '✗'} {label}
+                        </li>
+                      ))}
+                    </ul>
+                  </dd>
+                </div>
+                <div className="wide">
+                  <dt>Last seller action</dt>
+                  <dd>
+                    {business.lastSellerActivity
+                      ? `${business.lastSellerActivity.label} · ${formatOrderDate(business.lastSellerActivity.at)}`
+                      : 'No seller actions recorded yet'}
+                    <small className="muted admin-dd-note">
+                      Counts products added, orders the seller recorded, and payments they updated. Logins and
+                      settings changes are not tracked.
+                    </small>
+                  </dd>
+                </div>
+                <div className="wide">
+                  <dt>Last store activity</dt>
                   <dd>
                     {business.lastActivity
                       ? `${business.lastActivity.label} · ${formatOrderDate(business.lastActivity.at)}`
@@ -162,10 +224,22 @@ export default function AdminBusinessDetailPage() {
                     {trialDays !== null ? ` (${trialDays} day${trialDays === 1 ? '' : 's'} left)` : ''}
                   </dd>
                 </div>
+                {subscription.trialPaymentMethod ? (
+                  <div>
+                    <dt>After the trial</dt>
+                    <dd>{TRIAL_PAYMENT_LABELS[subscription.trialPaymentMethod]}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Current period ends</dt>
                   <dd>{formatShortDate(subscription.currentPeriodEndAt)}</dd>
                 </div>
+                {subscription.pastDueSince ? (
+                  <div>
+                    <dt>Payment failing since</dt>
+                    <dd>{formatShortDate(subscription.pastDueSince)}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>Cancellation</dt>
                   <dd>
@@ -174,7 +248,56 @@ export default function AdminBusinessDetailPage() {
                       : subscription.cancelAtPeriodEnd ? 'Cancels at period end' : '—'}
                   </dd>
                 </div>
+                <div>
+                  <dt>Razorpay subscription</dt>
+                  <dd>{razorpayLabel(subscription)}</dd>
+                </div>
               </dl>
+            </section>
+          </div>
+
+          <div className="admin-overview-grid">
+            <section className="card detail-card" aria-labelledby="admin-receipts-title">
+              <div className="admin-section-head">
+                <h2 id="admin-receipts-title">Payments received</h2>
+                {receipts.totals.map((row) => (
+                  <Badge tone="green" key={row.currency}>
+                    {formatPaise(row.totalPaise, row.currency)} · {row.payments} payment{row.payments === 1 ? '' : 's'}
+                  </Badge>
+                ))}
+              </div>
+              <p className="muted admin-note admin-note-top">Captured by Razorpay, before any refunds.</p>
+              {receipts.items.length === 0 ? (
+                <p className="muted">No Cove subscription payments recorded for this shop.</p>
+              ) : (
+                <div className="admin-list">
+                  {receipts.items.map((receipt) => (
+                    <div className="admin-list-row" key={receipt.id}>
+                      <strong>{formatPaise(receipt.amountPaise, receipt.currency)} · {receipt.planName}</strong>
+                      <small>
+                        {receipt.receiptNumber} · Paid {formatShortDate(receipt.paidAt)}
+                        {receipt.periodEndAt ? ` · Covers to ${formatShortDate(receipt.periodEndAt)}` : ''}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="card detail-card" aria-labelledby="admin-history-title">
+              <h2 id="admin-history-title">Admin history</h2>
+              {history.length === 0 ? (
+                <p className="muted">No admin actions on this shop yet.</p>
+              ) : (
+                <div className="admin-list">
+                  {history.map((entry) => (
+                    <div className="admin-list-row" key={entry.id}>
+                      <strong>{entry.label}{entry.targetEmail ? ` · ${entry.targetEmail}` : ''}</strong>
+                      <small>{entry.adminEmail || 'Unknown admin'} · {formatOrderDate(entry.at)}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
 
@@ -246,7 +369,9 @@ export default function AdminBusinessDetailPage() {
               <>
                 <p className="muted">
                   Archiving takes the storefront offline and signs the owner out. Nothing is deleted, and you can
-                  restore it later. A shop must be archived before the seller account can be deleted.
+                  restore it later. A shop must be archived before the seller account can be deleted. A shop whose
+                  Razorpay subscription can still charge cannot be archived; an unfinished checkout is cancelled in
+                  Razorpay first.
                 </p>
                 <div className="admin-danger-actions">
                   <button className="danger" type="button" onClick={() => setActionMode('archive')}>

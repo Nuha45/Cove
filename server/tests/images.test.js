@@ -10,6 +10,7 @@ const Business = require('../models/Business');
 const Product = require('../models/Product');
 const Subscription = require('../models/Subscription');
 const Notification = require('../models/Notification');
+const AdminAction = require('../models/AdminAction');
 const zlib = require('zlib');
 const imageStorage = require('../services/imageStorage');
 const adminService = require('../services/adminService');
@@ -78,6 +79,7 @@ describe('Cloudinary image storage', { timeout: 120000 }, () => {
       await Product.deleteMany(filter);
       await Notification.deleteMany(filter);
       await Subscription.deleteMany(filter);
+      await AdminAction.deleteMany(filter);
       await User.deleteMany(filter);
       await Business.deleteMany({ _id: { $in: createdBusinessIds } });
     }
@@ -373,6 +375,8 @@ describe('Cloudinary image storage', { timeout: 120000 }, () => {
   });
 
   describe('shop deletion cleanup', () => {
+    const operator = { _id: new mongoose.Types.ObjectId(), email: 'operator@example.com', businessId: null };
+
     async function archivedTenant(label) {
       const tenant = await registerTenant(label);
       const logo = await api('PATCH', '/api/business/settings', { token: tenant.token, body: { logo: PNG } });
@@ -387,7 +391,7 @@ describe('Cloudinary image storage', { timeout: 120000 }, () => {
       const tenant = await archivedTenant('cleanup');
       const before = imageStorage.memory.deletedPrefixes.length;
 
-      const result = await adminService.deleteBusiness(tenant.businessId, null, { confirmSlug: tenant.slug });
+      const result = await adminService.deleteBusiness(tenant.businessId, operator, { confirmSlug: tenant.slug });
       assert.equal(result.id, tenant.businessId);
 
       const prefixes = imageStorage.memory.deletedPrefixes.slice(before);
@@ -412,7 +416,7 @@ describe('Cloudinary image storage', { timeout: 120000 }, () => {
       console.warn = (...args) => warnings.push(args.join(' '));
       imageStorage.memory.failPrefixCleanup = true;
       try {
-        const result = await adminService.deleteBusiness(tenant.businessId, null, { confirmSlug: tenant.slug });
+        const result = await adminService.deleteBusiness(tenant.businessId, operator, { confirmSlug: tenant.slug });
         assert.equal(result.id, tenant.businessId);
       } finally {
         imageStorage.memory.failPrefixCleanup = false;

@@ -13,6 +13,7 @@ const {
   ENTITLEMENT_FIELDS,
 } = require('../utils/entitlements');
 const { PROVIDER } = require('../utils/subscriptionStatus');
+const { isUnfinishedCheckout } = require('../utils/adminStatus');
 const razorpayService = require('./razorpayService');
 
 function addDays(date, days) {
@@ -501,6 +502,53 @@ async function cancelSubscription(businessId) {
   };
 }
 
+const ENDED_PROVIDER_STATUSES = new Set(['cancelled', 'completed', 'expired']);
+
+/**
+ * Admin archive/delete: ends a Razorpay checkout the seller never completed and detaches it, so it can never be
+ * completed and charge an owner who is locked out. Razorpay is asked first, because Cove hears nothing when an
+ * unpaid checkout expires. Returns true when a checkout was released. Leaves anything Razorpay reports as
+ * authenticated or charging alone, for the caller's live-subscription guard to refuse.
+ */
+async function releaseUnfinishedCheckout(businessId, now = new Date()) {
+  const subscription = await Subscription.findOne({ businessId })
+    .select('status trialEndAt providerSubscriptionId lastProviderStatus')
+    .lean();
+  if (!isUnfinishedCheckout(subscription)) return false;
+
+  const providerSub = await razorpayService.fetchSubscription(subscription.providerSubscriptionId);
+  if (providerSub?.status === 'created') {
+    await razorpayService.cancelSubscription(subscription.providerSubscriptionId, { cancelAtCycleEnd: false });
+  } else if (providerSub && !ENDED_PROVIDER_STATUSES.has(providerSub.status)) {
+    return false;
+  }
+
+  const trialRunning = subscription.trialEndAt && new Date(subscription.trialEndAt) > now;
+  // Conditional, so a webhook that changed the subscription meanwhile is never overwritten.
+  const result = await Subscription.updateOne(
+    {
+      _id: subscription._id,
+      providerSubscriptionId: subscription.providerSubscriptionId,
+      status: subscription.status,
+      lastProviderStatus: subscription.lastProviderStatus,
+    },
+    {
+      $set: {
+        providerSubscriptionId: '',
+        providerPlanId: '',
+        lastProviderStatus: 'cancelled',
+        scheduledPlan: '',
+        cancelAtPeriodEnd: false,
+        pastDueSince: null,
+        lastProviderEventAt: null,
+        cancelledAt: now,
+        status: trialRunning ? 'trialing' : 'incomplete',
+      },
+    }
+  );
+  return result.modifiedCount === 1;
+}
+
 module.exports = {
   createTrialForBusiness,
   getOrCreateBillingRecord,
@@ -515,5 +563,6 @@ module.exports = {
   STORE_PAUSED,
   startSubscriptionCheckout,
   cancelSubscription,
+  releaseUnfinishedCheckout,
   planPublic,
 };

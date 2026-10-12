@@ -19,6 +19,7 @@ const Customer = require('../models/Customer');
 const Notification = require('../models/Notification');
 const EmailDelivery = require('../models/EmailDelivery');
 const StoreEvent = require('../models/StoreEvent');
+const AdminAction = require('../models/AdminAction');
 const billingService = require('../services/billingService');
 const { signToken } = require('../services/tokenService');
 const { COVE_PRO, COVE_ADVANCED, TRIAL_DAYS } = require('../utils/covePlan');
@@ -162,6 +163,7 @@ describe('platform admin access and billing exemption', { timeout: 240000 }, () 
         Product.deleteMany(scope),
         OrderCounter.deleteMany(scope),
         Subscription.deleteMany(scope),
+        AdminAction.deleteMany(scope),
         User.deleteMany(scope),
       ]);
       await Business.deleteMany({ _id: { $in: createdBusinessIds } });
